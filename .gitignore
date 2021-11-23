@@ -1,3 +1,10 @@
+*.pprof
+*.log
+*.db
+.DS_Store
+.idea/
+*.csv
+
 # Binaries for programs and plugins
 *.exe
 *.exe~

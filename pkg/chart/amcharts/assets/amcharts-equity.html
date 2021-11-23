@@ -1,0 +1,141 @@
+<!-- Styles -->
+<style>
+    #chartdiv {
+        width: 100%;
+        height: 500px;
+        max-width: 100%;
+    }
+</style>
+
+<!-- Resources -->
+<script src="https://cdn.amcharts.com/lib/4/core.js"></script>
+<script src="https://cdn.amcharts.com/lib/4/charts.js"></script>
+<script src="https://cdn.amcharts.com/lib/4/themes/animated.js"></script>
+<script src="https://cdn.amcharts.com/lib/4/plugins/rangeSelector.js"></script>
+<title>{{.Instrument}} Equity Curve</title>
+
+<!-- Chart code -->
+<script>
+    am4core.ready(function() {
+
+// Themes begin
+        am4core.useTheme(am4themes_animated);
+// Themes end
+
+// Create amcharts
+        var chart = am4core.create("chartdiv", am4charts.XYChart);
+        chart.padding(0, 15, 0, 15);
+
+// Load data
+        chart.data = JSON.parse({{ .DataPointsJSON }});
+
+// the following line makes value axes to be arranged vertically.
+        chart.leftAxesContainer.layout = "vertical";
+
+// uncomment this line if you want to change order of axes
+//amcharts.bottomAxesContainer.reverseOrder = true;
+
+        var dateAxis = chart.xAxes.push(new am4charts.DateAxis());
+        dateAxis.renderer.grid.template.location = 0;
+        dateAxis.renderer.ticks.template.length = 8;
+        dateAxis.renderer.ticks.template.strokeOpacity = 0.1;
+        dateAxis.renderer.grid.template.disabled = true;
+        dateAxis.renderer.ticks.template.disabled = false;
+        dateAxis.renderer.ticks.template.strokeOpacity = 0.2;
+        dateAxis.renderer.minLabelPosition = 0.01;
+        dateAxis.renderer.maxLabelPosition = 0.99;
+        dateAxis.keepSelection = true;
+        dateAxis.minHeight = 30;
+
+        dateAxis.groupData = false;
+        dateAxis.minZoomCount = 5;
+
+        chart.dateFormatter.inputDateFormat = "yyyy-MM-dd HH:mm";
+        dateAxis.baseInterval = {
+            "timeUnit": "hour",
+            "count": 1
+        } ;
+
+        var valueAxis = chart.yAxes.push(new am4charts.ValueAxis());
+        valueAxis.tooltip.disabled = true;
+        valueAxis.zIndex = 1;
+        valueAxis.renderer.baseGrid.disabled = true;
+        valueAxis.height = am4core.percent(65);
+
+        valueAxis.renderer.gridContainer.background.fill = am4core.color("#000000");
+        valueAxis.renderer.gridContainer.background.fillOpacity = 0.05;
+        valueAxis.renderer.inside = true;
+        valueAxis.renderer.labels.template.verticalCenter = "bottom";
+        valueAxis.renderer.labels.template.padding(2, 2, 2, 2);
+        valueAxis.renderer.fontSize = "0.8em"
+
+        var series = chart.series.push(new am4charts.LineSeries());
+        series.dataFields.valueY = "TotalBalance";
+        series.dataFields.dateX = "Date";
+        series.strokeWidth = 1;
+        series.minBulletDistance = 10;
+        series.tooltipText = "{valueY}";
+        series.fillOpacity = 0.1;
+        series.tooltip.pointerOrientation = "vertical";
+        series.tooltip.background.cornerRadius = 20;
+        series.tooltip.background.fillOpacity = 0.5;
+        series.tooltip.label.padding(12, 12, 12, 12)
+
+        var scrollbarX = new am4charts.XYChartScrollbar();
+        scrollbarX.series.push(series);
+        scrollbarX.marginBottom = 20;
+        scrollbarX.scrollbarChart.xAxes.getIndex(0).minHeight = undefined;
+        chart.scrollbarX = scrollbarX;
+
+        /**
+         * Set up external controls
+         */
+
+        // Add range selector
+        var selector = new am4plugins_rangeSelector.DateAxisRangeSelector();
+        selector.container = document.getElementById("controls");
+        selector.axis = dateAxis;
+
+        // Date format to be used in input fields
+        var inputFieldFormat = "yyyy-MM-dd HH:mm";
+
+        document.getElementById("fromfield").addEventListener("keyup", updateZoom);
+        document.getElementById("tofield").addEventListener("keyup", updateZoom);
+
+        var zoomTimeout;
+        function updateZoom() {
+            if (zoomTimeout) {
+                clearTimeout(zoomTimeout);
+            }
+            zoomTimeout = setTimeout(function() {
+                var start = document.getElementById("fromfield").value;
+                var end = document.getElementById("tofield").value;
+                if ((start.length < inputFieldFormat.length) || (end.length < inputFieldFormat.length)) {
+                    return;
+                }
+                var startDate = chart.dateFormatter.parse(start, inputFieldFormat);
+                var endDate = chart.dateFormatter.parse(end, inputFieldFormat);
+
+                if (startDate && endDate) {
+                    dateAxis.zoomToDates(startDate, endDate);
+                }
+            }, 500);
+        }
+
+        function zoomToDates(date) {
+            var min = dateAxis.groupMin["day1"];
+            var max = dateAxis.groupMax["day1"];
+            dateAxis.keepSelection = true;
+            //dateAxis.start = (date.getTime() - min)/(max - min);
+            //dateAxis.end = 1;
+
+            dateAxis.zoom({start:(date.getTime() - min)/(max - min), end:1});
+        }
+
+    }); // end am4core.ready()
+</script>
+
+<strong>{{.Instrument}} Equity curve</strong>
+
+<div id="controls"></div>
+<div id="chartdiv"></div>
