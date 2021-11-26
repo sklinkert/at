@@ -14,6 +14,8 @@ Supported brokers:
 - IG.com
 - FTX.com (partly)
 
+**Disclaimer**: The developers are not liable for any losses arising from the buy or sell of securities. All included strategies are examples and in no case ready trading systems.
+
 ## Installation
 
 ```sh
