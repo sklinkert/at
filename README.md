@@ -71,6 +71,8 @@ It can also print a chart with a beautiful equity curve:
 
 ![Terminal output](docs/backtest-equity-curve.png)
 
+You can use histdata.com prices for backtestings. Check [cmd/import-histdata](https://github.com/sklinkert/at/tree/master/cmd/import-histdata) for more.
+
 ## Contribution
 
 Feel free to send PRs. I'm always happy to discuss and improve the code.
