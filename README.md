@@ -77,6 +77,8 @@ You can use histdata.com prices for backtestings. Check [cmd/import-histdata](ht
 
 Feel free to send PRs. I'm always happy to discuss and improve the code.
 
+[![DigitalOcean Referral Badge](https://web-platforms.sfo2.digitaloceanspaces.com/WWW/Badge%203.svg)](https://www.digitalocean.com/?refcode=4a328aa341e2&utm_campaign=Referral_Invite&utm_medium=Referral_Program&utm_source=badge)
+
 ## Donations
 
 In case you want to show some love:
