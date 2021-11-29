@@ -20,7 +20,7 @@ const (
 	QuotesSourceSqlite = iota + 1
 	QuotesSourceYahooFinance
 	QuotesSourceIGMarkets
-	QuotesSourcePatternTrading
+	QuotesSourceCoinbase
 )
 
 func (b *Backtest) retrieveCandlesFromIGMarkets(receiver chan ohlc.OHLC) {
@@ -145,8 +145,8 @@ func (b *Backtest) ListenToPriceFeed(traderChan chan tick.Tick) {
 		go b.retrieveCandlesFromYahooFinance(c)
 	case QuotesSourceIGMarkets:
 		go b.retrieveCandlesFromIGMarkets(c)
-	case QuotesSourcePatternTrading:
-		go b.retrieveCandlesFromPatternTrading(c)
+	case QuotesSourceCoinbase:
+		go b.retrieveCandlesFromCoinbase(c)
 	default:
 		log.Fatalf("Unknown quotes source: %d", b.quotesSource)
 	}

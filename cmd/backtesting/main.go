@@ -43,6 +43,8 @@ var conf struct {
 	priceSource            string
 	yearFrom               int
 	yearTo                 int
+	monthFrom              int
+	monthTo                int
 	candleDuration         string
 	igAPIURL               string
 	igIdentifier           string
@@ -67,8 +69,10 @@ func main() {
 	e.OptionalString("BROKER", &conf.broker, BrokerBacktest, "Broker backend")
 	e.OptionalString("STRATEGY", &conf.strategyName, "meanreversion", "strategy to be executed")
 	e.OptionalString("CANDLE_DURATION", &conf.candleDuration, "60m", "Duration for OHLC candle")
-	e.OptionalInt("YEAR_FROM", &conf.yearFrom, 1970, "Backtesting beginning")
-	e.OptionalInt("YEAR_TO", &conf.yearTo, 2022, "Backtesting end")
+	e.OptionalInt("YEAR_FROM", &conf.yearFrom, 1970, "Backtesting beginning year")
+	e.OptionalInt("YEAR_TO", &conf.yearTo, 2022, "Backtesting end year")
+	e.OptionalInt("MONTH_FROM", &conf.monthFrom, 1, "Backtesting beginning month")
+	e.OptionalInt("MONTH_TO", &conf.monthTo, 12, "Backtesting end month")
 
 	if err := e.Load(); err != nil {
 		log.WithError(err).Fatal("env loading failed")
@@ -120,13 +124,13 @@ func main() {
 		dataFeed = backtest.WithTickDataFiles(conf.importHistDataCSVFiles)
 	}
 
-	periodFrom := time.Date(conf.yearFrom, 1, 1, 0, 0, 0, 0, time.UTC)
-	periodTo := time.Date(conf.yearTo, 12, 31, 23, 23, 59, 0, time.UTC)
+	periodFrom := time.Date(conf.yearFrom, time.Month(conf.monthFrom), 1, 0, 0, 0, 0, time.UTC)
+	periodTo := time.Date(conf.yearTo, time.Month(conf.monthTo), 31, 23, 23, 59, 0, time.UTC)
 
 	var priceDBOption backtest.Option
 	switch conf.priceSource {
-	case "PATTERN_TRADING":
-		priceDBOption = backtest.WithQuotesSource(backtest.QuotesSourcePatternTrading)
+	case "COINBASE":
+		priceDBOption = backtest.WithQuotesSource(backtest.QuotesSourceCoinbase)
 	default:
 		priceDBOption = backtest.WithQuotesSource(backtest.QuotesSourceSqlite)
 	}
