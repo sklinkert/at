@@ -12,11 +12,11 @@ Every broker API can be implemented. Works for stocks, forex, cryptocurrencies, 
 
 **Supported brokers**:
 
-|  Broker    |  Demo account | Paperwallet trading |  Real trading   |
-| ---- | ---- | ---- | ---- | 
-| IG.com   |  ✅    |   ❌   | ✅ |
-|  Coinbase    |   ❌   |  ✅    | ❌
-|  FTX    |   ❌   |  ✅    | ❌
+|  Broker    |  Demo account | Paperwallet trading |  Real trading   | Backtesting (historical prices) |
+| ---- | ---- | ---- | ---- | ---- |
+| IG.com   |  ✅    |   ❌   | ✅ | ✅
+|  Coinbase    |   ❌   |  ✅    | ❌ | ✅
+|  FTX    |   ❌   |  ✅    | ❌ | ❌
 
 
 **Disclaimer**: The developers are not liable for any losses arising from the buy or sell of securities. All included strategies are examples and in no case ready trading systems.
