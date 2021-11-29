@@ -10,9 +10,13 @@
 
 Every broker API can be implemented. Works for stocks, forex, cryptocurrencies, etc.
 
-Supported brokers:
-- IG.com
-- FTX.com (partly)
+**Supported brokers**:
+
+|  Broker    |  Demo account | Paperwallet trading   |   Real trading   |
+| ---- | ---- | ---- | ---- | 
+| IG.com   |  ✅    |   ❌   | ✅ |
+|  FTX    |   ❌   |  ✅    | ❌
+
 
 **Disclaimer**: The developers are not liable for any losses arising from the buy or sell of securities. All included strategies are examples and in no case ready trading systems.
 
@@ -71,7 +75,7 @@ It can also print a chart with a beautiful equity curve:
 
 ![Terminal output](docs/backtest-equity-curve.png)
 
-You can use histdata.com prices for backtestings. Check [cmd/import-histdata](https://github.com/sklinkert/at/tree/master/cmd/import-histdata) for more.
+You can use **histdata.com** prices for backtestings. Check [cmd/import-histdata](https://github.com/sklinkert/at/tree/master/cmd/import-histdata) for more.
 
 ## Contribution
 
