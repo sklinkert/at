@@ -1,6 +1,7 @@
 package trader
 
 import (
+	"errors"
 	"fmt"
 	"github.com/shopspring/decimal"
 	log "github.com/sirupsen/logrus"
@@ -208,7 +209,7 @@ func (tr *Trader) GetPerformanceRecord(chartHTML string) (*PerformanceRecord, er
 	}
 
 	if len(closedPositions) == 0 {
-		return nil, nil
+		return nil, errors.New("no positions")
 	}
 
 	var totalPerfInPips = tr.totalPerfInPips(closedPositions)
