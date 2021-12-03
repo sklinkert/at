@@ -6,9 +6,31 @@ import (
 	"github.com/sklinkert/at/internal/broker"
 )
 
+func (pw *Paperwallet) printOpenPositionSummary(position *broker.Position) {
+	sizeDec := decimal.NewFromFloat(position.Size)
+	entryAmount := position.BuyPrice.Mul(sizeDec)
+	currentPrice := decimal.Decimal{}
+	if position.BuyDirection == broker.BuyDirectionLong {
+		currentPrice = pw.currentTick.Bid
+	} else {
+		currentPrice = pw.currentTick.Ask
+	}
+	nowAmount := currentPrice.Mul(sizeDec)
+	profit := nowAmount.Sub(entryAmount)
+	log.Infof("Position: Direction=%s Size=%f EntryLevel=%5s Now=%5s -> %5s",
+		position.BuyDirection, position.Size, position.BuyPrice, currentPrice, profit)
+}
+
 func (pw *Paperwallet) PrintSummary() {
-	positions, _ := pw.GetClosedPositions()
-	if len(positions) == 0 {
+	openPositions, err := pw.GetOpenPositions()
+	if len(openPositions) > 0 && err != nil {
+		for _, position := range openPositions {
+			pw.printOpenPositionSummary(&position)
+		}
+	}
+
+	positions, err := pw.GetClosedPositions()
+	if len(positions) == 0 || err != nil {
 		return
 	}
 
