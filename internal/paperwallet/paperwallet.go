@@ -64,6 +64,7 @@ func New(options ...Option) *Paperwallet {
 	const defaultBalance = 1000
 
 	pw := &Paperwallet{
+		initialBalance:  decimal.NewFromFloat(defaultBalance),
 		balance:         decimal.NewFromFloat(defaultBalance),
 		openPositions:   map[string]broker.Position{},
 		closedPositions: map[string]broker.Position{},
