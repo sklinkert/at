@@ -8,19 +8,16 @@ import (
 )
 
 const (
-	NameMeanReversion = "meanreversion"
-	NameDOJI          = "doji"
-	NameHeikinAshi    = "heikinashi"
-	NameMock          = "mock"
-	NameScalper       = "scalper"
-	NameStochRSI      = "stochrsi"
-	NameRSI           = "rsi"
-	NameRSIADX        = "rsiadx"
-	NameLowCandle     = "lowcandle"
-	NameHarami        = "harami"
-	NameSMA10         = "sma10"
-	NameEngulfing     = "engulfing"
-	NameHighestHigh   = "marektstructure"
+	NameDOJI       = "doji"
+	NameHeikinAshi = "heikinashi"
+	NameScalper    = "scalper"
+	NameStochRSI   = "stochrsi"
+	NameRSI        = "rsi"
+	NameRSIADX     = "rsiadx"
+	NameLowCandle  = "lowcandle"
+	NameHarami     = "harami"
+	NameSMA10      = "sma10"
+	NameEngulfing  = "engulfing"
 )
 
 type Strategy interface {
