@@ -8,7 +8,6 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/sklinkert/at/internal/broker"
 	"github.com/sklinkert/at/internal/strategy"
-	"github.com/sklinkert/at/pkg/helper"
 	"github.com/sklinkert/at/pkg/ohlc"
 	"github.com/sklinkert/at/pkg/tick"
 	"gorm.io/gorm"
@@ -38,7 +37,6 @@ type Trader struct {
 	closedCandles               []*ohlc.OHLC
 	lastReceivedTick            *tick.Tick
 	gitRev                      string
-	positionNotes               map[string]string // position.Reference -> Note - not persisted!
 	candleSubscribers           []CandleSubscriber
 	positionSubscribers         []PositionSubscriber
 	orderSubscribers            []OrderSubscriber
@@ -148,7 +146,6 @@ func New(ctx context.Context, instrument, gitRev string, db *gorm.DB, options ..
 		clog:                      clog,
 		TickChan:                  make(chan tick.Tick),
 		reversedPerformanceInPips: make(map[ohlc.OHLC]float64),
-		positionNotes:             make(map[string]string),
 		positionBuyTime:           make(map[string]time.Time),
 		closedPositionReferences:  make(map[string]bool),
 		gitRev:                    gitRev,
@@ -212,7 +209,6 @@ func (tr *Trader) GetClosedPositions() ([]broker.Position, error) {
 		return []broker.Position{}, err
 	}
 	for i := range positions {
-		positions[i].Note = tr.positionNotes[positions[i].Reference]
 		positions[i].CandleBuyTime = tr.positionBuyTime[positions[i].Reference]
 	}
 	return positions, nil
@@ -236,7 +232,6 @@ func (tr *Trader) getOpenPositions() ([]broker.Position, error) {
 		return []broker.Position{}, err
 	}
 	for i := range positions {
-		positions[i].Note = tr.positionNotes[positions[i].Reference]
 		positions[i].CandleBuyTime = tr.positionBuyTime[positions[i].Reference]
 	}
 	return positions, nil
@@ -287,6 +282,13 @@ func (tr *Trader) processClosedCandle(closedCandle *ohlc.OHLC, currentTick tick.
 		tr.clog.Debugf("processClosedCandle: candle has missing price data, cannot process further: %s", closedCandle)
 		return
 	}
+
+	openOrders, err := tr.broker.GetOpenOrders()
+	if err != nil {
+		tr.clog.WithError(err).Error("Cannot get open orders")
+		return
+	}
+
 	if tr.strategy.GetCandleDuration() != closedCandle.Duration {
 		return
 	}
@@ -301,14 +303,33 @@ func (tr *Trader) processClosedCandle(closedCandle *ohlc.OHLC, currentTick tick.
 		return
 	}
 	tr.detectClosedPositions(closedPositions)
+	tr.processOpenPositions(closedCandle, openPositions)
 
-	toOpen, toClose := tr.strategy.ProcessCandle(closedCandle, tr.closedCandles, currentTick,
-		openPositions, closedPositions)
-	tr.processClosablePositions(toClose)
+	toOpen, toCloseOrderIDs, toClosePositons := tr.strategy.ProcessCandle(closedCandle, tr.closedCandles, currentTick,
+		openOrders, openPositions, closedPositions)
+	tr.processClosableOrders(toCloseOrderIDs)
+	tr.processClosablePositions(toClosePositons)
 	tr.processOrders(closedCandle, currentTick, toOpen)
 
 	for _, subscriber := range tr.candleSubscribers {
 		subscriber.OnCandle(*closedCandle)
+	}
+}
+
+func (tr *Trader) processClosableOrders(orderIDs []string) {
+	for _, orderID := range orderIDs {
+		if err := tr.broker.CancelOrder(orderID); err != nil {
+			tr.clog.WithError(err).WithFields(log.Fields{"OrderID": orderID}).Error("Unable to cancel order")
+		}
+	}
+}
+
+func (tr *Trader) processOpenPositions(candle *ohlc.OHLC, openPositions []broker.Position) {
+	for _, openPosition := range openPositions {
+		_, exists := tr.positionBuyTime[openPosition.Reference]
+		if !exists {
+			tr.positionBuyTime[openPosition.Reference] = candle.Start
+		}
 	}
 }
 
@@ -323,32 +344,15 @@ func (tr *Trader) processClosablePositions(toClose []broker.Position) {
 // processOrders - Execute order and open new positions
 func (tr *Trader) processOrders(candle *ohlc.OHLC, currentTick tick.Tick, toOpen []broker.Order) {
 	for _, order := range toOpen {
-		//tradingAllowed, reason := tr.riskLevelOK(currentTick, order.Direction, order)
-		//if !tradingAllowed {
-		//	tr.clog.WithFields(log.Fields{"REASON": reason}).Debug("Buy initiated but trading is not allowed")
-		//	continue
-		//}
-
 		order.CurrencyCode = tr.currencyCode
 
-		position, err := tr.broker.Buy(order)
+		_, err := tr.broker.Buy(order)
 		if err != nil {
 			tr.clog.WithError(err).Errorf("Unable to open position: %+v", order)
 			continue
 		}
-		tr.positionBuyTime[position.Reference] = candle.Start
-		tr.positionNotes[position.Reference] = order.Note
-		tr.clog.WithFields(log.Fields{
-			"Candle.Close":     candle.Close,
-			"Spread":           currentTick.Spread(),
-			"SlippageAbsolute": helper.SlippageAbsolute(candle.Close, position.BuyPrice),
-			"Reference":        position.Reference,
-			"Time":             candle.End.Local(),
-			"BuyDirection":     position.BuyDirection,
-			"BuyPrice":         position.BuyPrice,
-			"TargetPrice":      position.TargetPrice,
-			"StopLossPrice":    position.StopLossPrice,
-		}).Info("Got new position")
+
+		tr.clog.Infof("Got new order: %s", order.String())
 
 		for _, subscriber := range tr.orderSubscribers {
 			subscriber.OnOrder(order)

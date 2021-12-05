@@ -27,7 +27,6 @@ const (
 	adxThreshold        = 35
 	adxCandles          = 10
 	rsiCandles          = 2
-	orderNote           = strategy.NameRSIADX
 	targetInPercent     = 5.0
 	stopLossInPercent   = 2.5
 	maxAgeOpenPosition  = time.Hour * 2
@@ -71,20 +70,10 @@ func (d *RSIADX) GetWarmUpCandleAmount() uint {
 	return adxCandles * 2
 }
 
-func (d *RSIADX) ProcessCandle(closedCandle *ohlc.OHLC, closedCandles []*ohlc.OHLC, _ tick.Tick, openPositions []broker.Position, _ []broker.Position) (toOpen []broker.Order, toClose []broker.Position) {
+func (d *RSIADX) ProcessCandle(closedCandle *ohlc.OHLC, closedCandles []*ohlc.OHLC, _ tick.Tick, openOrders []broker.Order, openPositions []broker.Position, _ []broker.Position) (toOpen []broker.Order, toCloseOrderIDs []string, toClosePositions []broker.Position) {
 	d.rsi.Insert(closedCandle)
 	d.adx.Insert(closedCandle)
 	d.eo.AddCandle(closedCandle)
-
-	//rsiValue, rsiErr := d.getRSI()
-	//adxValue, adxErr := d.getADX()
-	//log.WithFields(log.Fields{
-	//	"RSI":     rsiValue,
-	//	"RSI_ERR": rsiErr,
-	//	"ADX":     adxValue,
-	//	"ADX_ERR": adxErr,
-	//	"Close":   closedCandle.Close,
-	//}).Info("Processing Candle")
 
 	if len(openPositions) > 0 {
 		return d.checkOpenPositions(closedCandle, closedCandles, openPositions)
@@ -96,32 +85,32 @@ func (d *RSIADX) ProcessCandle(closedCandle *ohlc.OHLC, closedCandles []*ohlc.OH
 
 	if d.isRSIShortSignal() {
 		toOpenNew := d.prepareOrder(closedCandle, broker.BuyDirectionShort, 1.00)
-		return []broker.Order{toOpenNew}, []broker.Position{}
+		return []broker.Order{toOpenNew}, []string{}, []broker.Position{}
 	} else if d.isRSILongSignal() {
 		toOpenNew := d.prepareOrder(closedCandle, broker.BuyDirectionLong, 1.00)
-		return []broker.Order{toOpenNew}, []broker.Position{}
+		return []broker.Order{toOpenNew}, []string{}, []broker.Position{}
 	}
 	return
 }
 
-func (d *RSIADX) checkOpenPositions(closedCandle *ohlc.OHLC, closedCandles []*ohlc.OHLC, openPositions []broker.Position) (toOpen []broker.Order, toClose []broker.Position) {
+func (d *RSIADX) checkOpenPositions(closedCandle *ohlc.OHLC, closedCandles []*ohlc.OHLC, openPositions []broker.Position) (toOpen []broker.Order, toCloseOrderIDs []string, toClosePositions []broker.Position) {
 	var previousCandle = closedCandles[len(closedCandles)-2]
 
 	for _, openPosition := range openPositions {
 		if openPosition.Age(closedCandle.End) > maxAgeOpenPosition &&
 			openPosition.PerformanceAbsolute(closedCandle.Close, closedCandle.Close) > 0 {
-			toClose = append(toClose, openPosition)
+			toClosePositions = append(toClosePositions, openPosition)
 			continue
 		}
 
 		switch openPosition.BuyDirection {
 		case broker.BuyDirectionLong:
 			if closedCandle.Close.GreaterThan(previousCandle.High) {
-				toClose = append(toClose, openPosition)
+				toClosePositions = append(toClosePositions, openPosition)
 			}
 		case broker.BuyDirectionShort:
 			if closedCandle.Close.LessThan(previousCandle.Low) {
-				toClose = append(toClose, openPosition)
+				toClosePositions = append(toClosePositions, openPosition)
 			}
 		}
 	}
@@ -179,7 +168,7 @@ func (d *RSIADX) prepareOrder(closedCandle *ohlc.OHLC, direction broker.BuyDirec
 		"StopLoss":  stopLossPrice,
 	}).Debug("Prepare new order")
 
-	return broker.NewOrder(direction, size, d.instrument, targetPrice, stopLossPrice, orderNote)
+	return broker.NewMarketOrder(direction, size, d.instrument, targetPrice, stopLossPrice)
 }
 
 func (d *RSIADX) Name() string {

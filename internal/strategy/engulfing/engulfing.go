@@ -27,7 +27,6 @@ type Engulfing struct {
 }
 
 const (
-	orderNote            = strategy.NameEngulfing
 	targetInPercent      = 10.0
 	stopLossInPercent    = 10.0
 	smaCandles           = 200
@@ -85,18 +84,18 @@ func (d *Engulfing) noTradingPeriod(now time.Time) bool {
 	return false
 }
 
-func (d *Engulfing) ProcessCandle(closedCandle *ohlc.OHLC, closedCandles []*ohlc.OHLC, currentTick tick.Tick, openPositions []broker.Position, closedPositions []broker.Position) (toOpen []broker.Order, toClose []broker.Position) {
+func (d *Engulfing) ProcessCandle(closedCandle *ohlc.OHLC, closedCandles []*ohlc.OHLC, currentTick tick.Tick, openOrders []broker.Order, openPositions []broker.Position, closedPositions []broker.Position) (toOpen []broker.Order, toCloseOrderIDs []string, toClosePositions []broker.Position) {
 	defer d.feedIndicator(closedCandle)
 
 	if strategyLongEnabled {
 		toOpenLong, toCloseLong := d.strategyLong(closedCandle, closedCandles, currentTick, openPositions, closedPositions)
 		toOpen = append(toOpen, toOpenLong...)
-		toClose = append(toClose, toCloseLong...)
+		toClosePositions = append(toClosePositions, toCloseLong...)
 	}
 	if strategyShortEnabled {
 		toOpenShort, toCloseShort := d.strategyShort(closedCandle, closedCandles, currentTick, openPositions, closedPositions)
 		toOpen = append(toOpen, toOpenShort...)
-		toClose = append(toClose, toCloseShort...)
+		toClosePositions = append(toClosePositions, toCloseShort...)
 	}
 	return
 }
@@ -283,7 +282,7 @@ func (d *Engulfing) prepareOrder(closedCandle *ohlc.OHLC, direction broker.BuyDi
 		"StopLoss":  stopLossPrice,
 	}).Debug("Prepare new order")
 
-	return broker.NewOrder(direction, size, d.instrument, targetPrice, stopLossPrice, orderNote)
+	return broker.NewMarketOrder(direction, size, d.instrument, targetPrice, stopLossPrice)
 }
 
 func (d *Engulfing) Name() string {

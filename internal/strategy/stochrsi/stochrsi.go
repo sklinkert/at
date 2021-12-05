@@ -21,7 +21,6 @@ const (
 	ohlcPeriod        = time.Minute * 60
 	upperThreshold    = 90
 	lowerThreshold    = 10
-	orderNote         = strategy.NameStochRSI
 	targetInPercent   = 4.0
 	stopLossInPercent = 0.5
 )
@@ -46,7 +45,7 @@ func (d *RSI) GetWarmUpCandleAmount() uint {
 	return 1
 }
 
-func (d *RSI) ProcessCandle(closedCandle *ohlc.OHLC, closedCandles []*ohlc.OHLC, currentTick tick.Tick, openPositions []broker.Position, _ []broker.Position) (toOpen []broker.Order, toClose []broker.Position) {
+func (d *RSI) ProcessCandle(closedCandle *ohlc.OHLC, closedCandles []*ohlc.OHLC, currentTick tick.Tick, openOrders []broker.Order, openPositions []broker.Position, _ []broker.Position) (toOpen []broker.Order, toCloseOrderIDs []string, toClosePositions []broker.Position) {
 	d.rsi.Insert(closedCandle)
 	if len(openPositions) > 0 {
 		return
@@ -69,11 +68,11 @@ func (d *RSI) ProcessCandle(closedCandle *ohlc.OHLC, closedCandles []*ohlc.OHLC,
 	}
 	if kValue > upperThreshold && dValue > upperThreshold {
 		toOpenNew := d.prepareOrder(closedCandle, broker.BuyDirectionShort, 1.00)
-		return []broker.Order{toOpenNew}, []broker.Position{}
+		return []broker.Order{toOpenNew}, []string{}, []broker.Position{}
 	}
 	if kValue < lowerThreshold && dValue < lowerThreshold {
 		toOpenNew := d.prepareOrder(closedCandle, broker.BuyDirectionLong, 1.00)
-		return []broker.Order{toOpenNew}, []broker.Position{}
+		return []broker.Order{toOpenNew}, []string{}, []broker.Position{}
 	}
 	return
 }
@@ -92,7 +91,7 @@ func (d *RSI) prepareOrder(closedCandle *ohlc.OHLC, direction broker.BuyDirectio
 		"StopLoss":  stopLossPrice,
 	}).Debug("Prepare new order")
 
-	return broker.NewOrder(direction, size, d.instrument, targetPrice, stopLossPrice, orderNote)
+	return broker.NewMarketOrder(direction, size, d.instrument, targetPrice, stopLossPrice)
 }
 
 func (d *RSI) Name() string {

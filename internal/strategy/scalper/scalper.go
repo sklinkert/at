@@ -43,7 +43,7 @@ func (mr *scalper) GetCandleDuration() time.Duration {
 	return time.Minute * 5
 }
 
-func (mr *scalper) ProcessCandle(closedCandle *ohlc.OHLC, closedCandles []*ohlc.OHLC, currentTick tick.Tick, openPositions []broker.Position, _ []broker.Position) (toOpen []broker.Order, toClose []broker.Position) {
+func (mr *scalper) ProcessCandle(closedCandle *ohlc.OHLC, closedCandles []*ohlc.OHLC, currentTick tick.Tick, openOrders []broker.Order, openPositions []broker.Position, _ []broker.Position) (toOpen []broker.Order, toCloseOrderIDs []string, toClosePositions []broker.Position) {
 	const candles = 10
 
 	if len(openPositions) > 0 {
@@ -101,7 +101,7 @@ func (mr *scalper) createOrder(openOHLC *ohlc.OHLC, currentTick tick.Tick, direc
 		"OHLC.Age":        openOHLC.Age(currentTick.Datetime).String(),
 	}).Debug("Creating new order")
 
-	return broker.NewOrder(direction, size, openOHLC.Instrument, targetPrice, stopLossPrice, orderName), nil
+	return broker.NewMarketOrder(direction, size, openOHLC.Instrument, targetPrice, stopLossPrice), nil
 }
 
 func (mr *scalper) calcTargetPrice(direction broker.BuyDirection, tick tick.Tick, percentage decimal.Decimal) (decimal.Decimal, error) {

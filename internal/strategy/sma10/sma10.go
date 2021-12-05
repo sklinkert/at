@@ -26,7 +26,6 @@ type SMA struct {
 }
 
 const (
-	orderNote            = strategy.NameSMA10
 	targetInPercent      = 2.0
 	stopLossInPercent    = 0.5
 	smaCandles           = 200
@@ -86,18 +85,18 @@ func (d *SMA) noTradingPeriod(now time.Time) bool {
 	return false
 }
 
-func (d *SMA) ProcessCandle(closedCandle *ohlc.OHLC, closedCandles []*ohlc.OHLC, currentTick tick.Tick, openPositions []broker.Position, closedPositions []broker.Position) (toOpen []broker.Order, toClose []broker.Position) {
+func (d *SMA) ProcessCandle(closedCandle *ohlc.OHLC, closedCandles []*ohlc.OHLC, currentTick tick.Tick, openOrders []broker.Order, openPositions []broker.Position, closedPositions []broker.Position) (toOpen []broker.Order, toCloseOrderIDs []string, toClosePositions []broker.Position) {
 	defer d.feedIndicator(closedCandle)
 
 	if strategyLongEnabled {
 		toOpenLong, toCloseLong := d.strategyLong(closedCandle, closedCandles, currentTick, openPositions, closedPositions)
 		toOpen = append(toOpen, toOpenLong...)
-		toClose = append(toClose, toCloseLong...)
+		toClosePositions = append(toClosePositions, toCloseLong...)
 	}
 	if strategyShortEnabled {
 		toOpenShort, toCloseShort := d.strategyShort(closedCandle, closedCandles, currentTick, openPositions, closedPositions)
 		toOpen = append(toOpen, toOpenShort...)
-		toClose = append(toClose, toCloseShort...)
+		toClosePositions = append(toClosePositions, toCloseShort...)
 	}
 	return
 }
@@ -210,7 +209,7 @@ func (d *SMA) prepareOrder(closedCandle *ohlc.OHLC, direction broker.BuyDirectio
 		"StopLoss":  stopLossPrice,
 	}).Debug("Prepare new order")
 
-	return broker.NewOrder(direction, size, d.instrument, targetPrice, stopLossPrice, orderNote)
+	return broker.NewMarketOrder(direction, size, d.instrument, targetPrice, stopLossPrice)
 }
 
 func (d *SMA) Name() string {

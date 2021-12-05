@@ -24,7 +24,7 @@ func New(instrument string, paperwallet *paperwallet.Paperwallet) *FTX {
 	}
 }
 
-func (f *FTX) Buy(order broker.Order) (broker.Position, error) {
+func (f *FTX) Buy(order broker.Order) (string, error) {
 	return f.paperwallet.Buy(order)
 }
 

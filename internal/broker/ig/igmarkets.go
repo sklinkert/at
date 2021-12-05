@@ -2,6 +2,7 @@ package ig
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"github.com/shopspring/decimal"
 	log "github.com/sirupsen/logrus"
@@ -114,7 +115,17 @@ func toDirection(direction broker.BuyDirection) string {
 	}
 }
 
-func (b *Broker) Buy(order broker.Order) (broker.Position, error) {
+func (b *Broker) Buy(order broker.Order) (string, error) {
+	if order.Type != broker.OrderTypeMarket {
+		// TODO
+		return "", errors.New("limit order currently not supported")
+	}
+
+	orderID, _, err := b.BuyMarket(order)
+	return orderID, err
+}
+
+func (b *Broker) BuyMarket(order broker.Order) (string, broker.Position, error) {
 	b.Lock()
 	defer b.Unlock()
 
@@ -146,12 +157,12 @@ func (b *Broker) Buy(order broker.Order) (broker.Position, error) {
 		ForceOpen: true,
 	}
 
-	if !order.TrailingStopDistanceInPips.IsZero() {
-		igOrder.StopDistance = order.TrailingStopDistanceInPips.String()
-		igOrder.TrailingStopIncrement = order.TrailingStopIncrementSizeInPips.String()
-		igOrder.StopLevel = ""
-		igOrder.TrailingStop = true
-	}
+	//if !order.TrailingStopDistanceInPips.IsZero() {
+	//	igOrder.StopDistance = order.TrailingStopDistanceInPips.String()
+	//	igOrder.TrailingStopIncrement = order.TrailingStopIncrementSizeInPips.String()
+	//	igOrder.StopLevel = ""
+	//	igOrder.TrailingStop = true
+	//}
 
 	clog.Debugf("New order: %v", order)
 
@@ -159,7 +170,7 @@ func (b *Broker) Buy(order broker.Order) (broker.Position, error) {
 	dealRef, err := b.igHandle.PlaceOTCOrder(context.Background(), igOrder)
 	if err != nil {
 		clog.WithError(err).Error("Unable to place order")
-		return broker.Position{}, err
+		return "", broker.Position{}, err
 	}
 
 	clog = clog.WithFields(log.Fields{"Reference": dealRef})
@@ -185,12 +196,12 @@ func (b *Broker) Buy(order broker.Order) (broker.Position, error) {
 
 	if confirmation.Status != "OPEN" {
 		clog.WithFields(log.Fields{"Status": confirmation.Status}).Errorf("Unexpected order status: %+v", confirmation)
-		return broker.Position{}, fmt.Errorf("unexpected order status %q", confirmation.Status)
+		return "", broker.Position{}, fmt.Errorf("unexpected order status %q", confirmation.Status)
 	}
 
 	b.openPositionsLastChecked = time.Time{} // invalidate cache
 
-	return broker.Position{
+	return dealRef.DealReference, broker.Position{
 		Reference:     toInternalReference(confirmation.AffectedDeals[0].DealID, confirmation.DealReference),
 		Instrument:    confirmation.Epic,
 		BuyPrice:      decimal.NewFromFloat(confirmation.Level),
@@ -286,7 +297,7 @@ func (b *Broker) GetOpenPosition(positionRef string) (position broker.Position, 
 	return broker.Position{}, broker.ErrPositionNotFound
 }
 
-// GetOpenPositions returns all open positions for given instrument name
+// GetOpenPositionsByInstrument returns all open positions for given instrument name
 func (b *Broker) GetOpenPositionsByInstrument(instrument string) ([]broker.Position, error) {
 	positions, err := b.GetOpenPositions()
 	if err != nil {
@@ -476,4 +487,14 @@ func areMarketsOpen(now time.Time) bool {
 		return false
 	}
 	return true
+}
+
+func (b *Broker) CancelOrder(orderID string) error {
+	// TODO
+	return errors.New("not supported")
+}
+
+func (b *Broker) GetOpenOrders() ([]broker.Order, error) {
+	// TODO
+	return []broker.Order{}, errors.New("not supported")
 }

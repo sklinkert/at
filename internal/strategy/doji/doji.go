@@ -27,8 +27,6 @@ const (
 	ohlcPeriod        = time.Minute * 60
 	trackersMinPeriod = time.Hour * 24 * 15 // 15d
 	trackersMaxPeriod = time.Hour * 24 * 30 // 30d
-	orderNoteDOJI     = "doji"
-	orderNoteCounter  = "counter"
 )
 
 var decZero = decimal.NewFromFloat(0)
@@ -73,7 +71,7 @@ func (d *Doji) GetCandleDuration() time.Duration {
 	return time.Hour * 24
 }
 
-func (d *Doji) ProcessCandle(closedCandle *ohlc.OHLC, closedCandles []*ohlc.OHLC, currentTick tick.Tick, openPositions []broker.Position, _ []broker.Position) (toOpen []broker.Order, toClose []broker.Position) {
+func (d *Doji) ProcessCandle(_ *ohlc.OHLC, _ []*ohlc.OHLC, _ tick.Tick, _ []broker.Order, _ []broker.Position, _ []broker.Position) (toOpen []broker.Order, toCloseOrderIDs []string, toClosePositions []broker.Position) {
 	return
 }
 
@@ -81,7 +79,7 @@ func (d *Doji) GetWarmUpCandleAmount() uint {
 	return 1
 }
 
-func (d *Doji) ProcessTick(currentTick tick.Tick, openPositions []broker.Position, closedPositions []broker.Position) (toOpen []broker.Order, toClose []broker.Position) {
+func (d *Doji) ProcessTick(currentTick tick.Tick, openPositions []broker.Position, closedPositions []broker.Position) (toOpen []broker.Order, toCloseOrderIDs []string, toClosePositions []broker.Position) {
 	if d.openCandle == nil {
 		// Initialize candle
 		d.openCandle = ohlc.New(d.instrument, currentTick.Datetime, ohlcPeriod, true)
@@ -90,7 +88,7 @@ func (d *Doji) ProcessTick(currentTick tick.Tick, openPositions []broker.Positio
 	if !d.sendTickToOHLC(currentTick) {
 		toOpenOld, toCloseOld := d.checkClosedPositions(d.openCandle, currentTick, openPositions, closedPositions)
 		toOpen = mergeOrders(toOpen, toOpenOld)
-		toClose = mergePositions(toClose, toCloseOld)
+		toClosePositions = mergePositions(toClosePositions, toCloseOld)
 	}
 	if d.openCandle.HasGaps() {
 		return
@@ -112,7 +110,7 @@ func (d *Doji) ProcessTick(currentTick tick.Tick, openPositions []broker.Positio
 
 	// Check for long signal
 	if currentTick.Bid.GreaterThan(d.previousCandle.High.Add(dec2Pip)) {
-		toOpenNew, err := d.createOrder(d.openCandle, currentTick, targetInPercent, broker.BuyDirectionLong, 1.00, orderNoteDOJI)
+		toOpenNew, err := d.createOrder(d.openCandle, currentTick, targetInPercent, broker.BuyDirectionLong, 1.00)
 		if err == nil {
 			toOpen = mergeOrders(toOpen, []broker.Order{toOpenNew})
 		}
@@ -121,7 +119,7 @@ func (d *Doji) ProcessTick(currentTick tick.Tick, openPositions []broker.Positio
 
 	// Check for short signal
 	if currentTick.Ask.LessThan(d.previousCandle.Low.Sub(dec2Pip)) {
-		toOpenNew, err := d.createOrder(d.openCandle, currentTick, targetInPercent, broker.BuyDirectionShort, 1.00, orderNoteDOJI)
+		toOpenNew, err := d.createOrder(d.openCandle, currentTick, targetInPercent, broker.BuyDirectionShort, 1.00)
 		if err == nil {
 			toOpen = mergeOrders(toOpen, []broker.Order{toOpenNew})
 		}
@@ -147,17 +145,17 @@ func (d *Doji) checkClosedPositions(openOHLC *ohlc.OHLC, currentTick tick.Tick, 
 			// position not closed in previousCandle candle
 			continue
 		}
-		if closedPosition.Note == orderNoteDOJI && closedPosition.PerformanceInPercentage(decZero, decZero) < 0 {
+		if closedPosition.PerformanceInPercentage(decZero, decZero) < 0 {
 			switch closedPosition.BuyDirection {
 			case broker.BuyDirectionLong:
 				log.Infof("Placing counter trade: short")
-				order, err := d.createOrder(openOHLC, currentTick, targetInPercent, broker.BuyDirectionShort, 1, orderNoteCounter)
+				order, err := d.createOrder(openOHLC, currentTick, targetInPercent, broker.BuyDirectionShort, 1)
 				if err == nil {
 					toOpen = append(toOpen, order)
 				}
 			case broker.BuyDirectionShort:
 				log.Infof("Placing counter trade: long")
-				order, err := d.createOrder(openOHLC, currentTick, targetInPercent, broker.BuyDirectionLong, 1, orderNoteCounter)
+				order, err := d.createOrder(openOHLC, currentTick, targetInPercent, broker.BuyDirectionLong, 1)
 				if err == nil {
 					toOpen = append(toOpen, order)
 				}
@@ -168,7 +166,7 @@ func (d *Doji) checkClosedPositions(openOHLC *ohlc.OHLC, currentTick tick.Tick, 
 	return
 }
 
-func (d *Doji) createOrder(openOHLC *ohlc.OHLC, currentTick tick.Tick, perfMargin decimal.Decimal, direction broker.BuyDirection, size float64, note string) (broker.Order, error) {
+func (d *Doji) createOrder(openOHLC *ohlc.OHLC, currentTick tick.Tick, perfMargin decimal.Decimal, direction broker.BuyDirection, size float64) (broker.Order, error) {
 	targetPrice, err := d.calcTargetPrice(direction, currentTick, perfMargin)
 	if err != nil {
 		return broker.Order{}, fmt.Errorf("calcTargetPrice() failed %v", err)
@@ -191,7 +189,7 @@ func (d *Doji) createOrder(openOHLC *ohlc.OHLC, currentTick tick.Tick, perfMargi
 		//"Today.Perf":      d.today.PerformanceInPercentage().Round(2),
 	}).Debug("Creating new order")
 
-	return broker.NewOrder(direction, size, openOHLC.Instrument, targetPrice, stopLossPrice, note), nil
+	return broker.NewMarketOrder(direction, size, openOHLC.Instrument, targetPrice, stopLossPrice), nil
 }
 
 func isDOJI(candle *ohlc.OHLC) bool {

@@ -56,7 +56,7 @@ func (tr *Trader) printPositionPerformanceByNotes() {
 	for _, position := range closedPositions {
 		perfInPips := helper.Cent2Pips(decimal.NewFromFloat(position.PerformanceAbsolute(decimal.Zero, decimal.Zero)))
 		perfInPipsFloat, _ := perfInPips.Float64()
-		key := fmt.Sprintf("%d-%s", position.BuyTime.Year(), position.Note)
+		key := fmt.Sprintf("%d-%s", position.BuyTime.Year(), position.Reference)
 		perfPositionsByNote[key] += perfInPipsFloat
 	}
 	var sortedKeys []string

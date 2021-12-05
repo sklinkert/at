@@ -1,7 +1,6 @@
 package backtest
 
 import (
-	log "github.com/sirupsen/logrus"
 	"github.com/sklinkert/at/internal/broker"
 	"github.com/sklinkert/at/internal/paperwallet"
 	"github.com/sklinkert/igmarkets"
@@ -78,20 +77,12 @@ func New(instrument string, periodFrom, periodTo time.Time, paperwallet *paperwa
 }
 
 // Buy open new position with target and stop loss
-func (b *Backtest) Buy(order broker.Order) (broker.Position, error) {
+func (b *Backtest) Buy(order broker.Order) (string, error) {
 	b.Lock()
 	defer b.Unlock()
 
-	position, err := b.paperwallet.Buy(order)
-
-	log.WithFields(log.Fields{
-		"Error":     err,
-		"BuyTime":   position.BuyTime,
-		"Reference": position.Reference,
-		"Size":      order.Size,
-	}).Debug("New position")
-
-	return position, err
+	orderID, err := b.paperwallet.Buy(order)
+	return orderID, err
 }
 
 // Sell closes the given open position
@@ -100,4 +91,12 @@ func (b *Backtest) Sell(position broker.Position) error {
 	defer b.Unlock()
 
 	return b.paperwallet.Sell(position)
+}
+
+func (b *Backtest) GetOpenOrders() ([]broker.Order, error) {
+	return b.paperwallet.GetOpenOrders(), nil
+}
+
+func (b *Backtest) CancelOrder(orderID string) error {
+	return b.paperwallet.CancelOrder(orderID)
 }

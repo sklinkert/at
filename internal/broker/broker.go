@@ -6,10 +6,14 @@ import (
 )
 
 type BuyDirection int
+type OrderType int
 
 const (
 	BuyDirectionLong BuyDirection = iota
 	BuyDirectionShort
+
+	OrderTypeMarket OrderType = iota
+	OrderTypeLimit
 )
 
 var (
@@ -22,10 +26,12 @@ func (bd BuyDirection) String() string {
 }
 
 type Broker interface {
-	Buy(order Order) (Position, error)
+	Buy(order Order) (orderID string, err error)
+	CancelOrder(orderID string) error
 	Sell(position Position) error
 	GetOpenPosition(positionRef string) (position Position, err error)
 	GetOpenPositions() ([]Position, error)
+	GetOpenOrders() ([]Order, error)
 	GetOpenPositionsByInstrument(instrument string) ([]Position, error)
 	GetClosedPositions() ([]Position, error)
 	ListenToPriceFeed(chan tick.Tick)

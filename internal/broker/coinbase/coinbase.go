@@ -20,12 +20,20 @@ func New(instrument string, paperwallet *paperwallet.Paperwallet) *Coinbase {
 	}
 }
 
-func (cb *Coinbase) Buy(order broker.Order) (broker.Position, error) {
+func (cb *Coinbase) Buy(order broker.Order) (string, error) {
 	return cb.paperwallet.Buy(order)
+}
+
+func (cb *Coinbase) CancelOrder(orderID string) error {
+	return cb.paperwallet.CancelOrder(orderID)
 }
 
 func (cb *Coinbase) Sell(position broker.Position) error {
 	return cb.paperwallet.Sell(position)
+}
+
+func (cb *Coinbase) GetOpenOrders() ([]broker.Order, error) {
+	return cb.paperwallet.GetOpenOrders(), nil
 }
 
 func (cb *Coinbase) GetOpenPosition(positionRef string) (position broker.Position, err error) {

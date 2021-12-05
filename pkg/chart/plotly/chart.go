@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"embed"
 	"fmt"
-	"github.com/shopspring/decimal"
 	log "github.com/sirupsen/logrus"
 	"github.com/sklinkert/at/internal/broker"
 	"github.com/sklinkert/at/pkg/ohlc"
@@ -52,14 +51,12 @@ func (c *Chart) RenderChart(w io.Writer) error {
 			Direction:   position.BuyDirection,
 			Size:        position.Size,
 			Instrument:  position.Instrument,
-			Note:        position.Reference,
 			CandleStart: position.CandleBuyTime,
 		})
 		orders = append(orders, broker.Order{
 			Direction:   position.BuyDirection,
 			Size:        -position.Size,
 			Instrument:  position.Instrument,
-			Note:        fmt.Sprintf("Profit: %.2f%%", position.PerformanceInPercentage(decimal.Zero, decimal.Zero)),
 			CandleStart: position.CandleSellTime,
 		})
 	}

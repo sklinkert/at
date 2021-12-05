@@ -20,7 +20,6 @@ type Position struct {
 	StopLossPrice       decimal.Decimal
 	Size                float64
 	OHLCAgeOnBuy        time.Duration
-	Note                string
 	CandleBuyTime       time.Time
 	CandleSellTime      time.Time
 

@@ -6,13 +6,12 @@ import (
 	"github.com/shopspring/decimal"
 	log "github.com/sirupsen/logrus"
 	"github.com/sklinkert/at/internal/broker"
-	"github.com/sklinkert/at/pkg/helper"
 	"github.com/sklinkert/at/pkg/tick"
 	"sort"
 )
 
 // Buy open new position with target and stop loss
-func (pw *Paperwallet) Buy(order broker.Order) (broker.Position, error) {
+func (pw *Paperwallet) Buy(order broker.Order) (orderID string, err error) {
 	pw.Lock()
 	defer pw.Unlock()
 
@@ -20,9 +19,20 @@ func (pw *Paperwallet) Buy(order broker.Order) (broker.Position, error) {
 		log.WithError(err).Fatalf("Order is not valid: %+v", order)
 	}
 	if err := pw.buyCheckTargetAndStopLoss(order); err != nil {
-		return broker.Position{}, err
+		return "", err
 	}
 
+	orderID = uuid.New().String()
+	if order.Type == broker.OrderTypeMarket {
+		pw.openPosition(orderID, order)
+	} else if order.Type == broker.OrderTypeLimit {
+		pw.openOrders[orderID] = order
+	}
+
+	return orderID, nil
+}
+
+func (pw *Paperwallet) openPosition(orderID string, order broker.Order) broker.Position {
 	positionRef := uuid.New().String()
 	_, exists := pw.openPositions[positionRef]
 	if exists {
@@ -40,15 +50,7 @@ func (pw *Paperwallet) Buy(order broker.Order) (broker.Position, error) {
 		Size:          order.Size,
 	}
 	pw.openPositions[position.Reference] = position
-
-	if !order.TrailingStopDistanceInPips.IsZero() {
-		// Set trailing stop
-		ts := TrailingStop{
-			StopDistance:        order.TrailingStopDistanceInPips,
-			IncrementSizeInPips: order.TrailingStopIncrementSizeInPips,
-		}
-		pw.trailingStops[position.Reference] = ts
-	}
+	delete(pw.openOrders, orderID)
 
 	log.WithFields(log.Fields{
 		"BuyTime":   pw.openPositions[positionRef].BuyTime,
@@ -56,47 +58,7 @@ func (pw *Paperwallet) Buy(order broker.Order) (broker.Position, error) {
 		"Size":      order.Size,
 	}).Debug("New position")
 
-	return position, nil
-}
-
-func (pw *Paperwallet) updateTrailingStop(position *broker.Position) {
-	ts, exists := pw.trailingStops[position.Reference]
-	if !exists {
-		return
-	}
-
-	if position.StopLossPrice.IsZero() {
-		// Set initial level
-		switch position.BuyDirection {
-		case broker.BuyDirectionLong:
-			position.StopLossPrice = pw.currentTick.Ask.Sub(helper.Pips2Cent(ts.StopDistance))
-		case broker.BuyDirectionShort:
-			position.StopLossPrice = pw.currentTick.Bid.Add(helper.Pips2Cent(ts.StopDistance))
-		default:
-			log.Fatal("unsupported buy direction")
-		}
-
-		pw.openPositions[position.Reference] = *position
-		return
-	}
-
-	var maxDistance = ts.StopDistance.Add(ts.IncrementSizeInPips)
-	switch position.BuyDirection {
-	case broker.BuyDirectionLong:
-		var distanceToStopInPips = helper.Cent2Pips(pw.currentTick.Price().Sub(position.StopLossPrice))
-		if distanceToStopInPips.GreaterThan(maxDistance) {
-			position.StopLossPrice = pw.currentTick.Ask.Sub(helper.Pips2Cent(ts.StopDistance))
-		}
-	case broker.BuyDirectionShort:
-		var distanceToStopInPips = helper.Cent2Pips(position.StopLossPrice.Sub(pw.currentTick.Price()))
-		if distanceToStopInPips.GreaterThan(maxDistance) {
-			position.StopLossPrice = pw.currentTick.Bid.Add(helper.Pips2Cent(ts.StopDistance))
-		}
-	default:
-		log.Fatal("unsupported buy direction")
-	}
-
-	pw.openPositions[position.Reference] = *position
+	return position
 }
 
 func (pw *Paperwallet) getSellPriceByDirection(direction broker.BuyDirection, slippage bool) decimal.Decimal {
@@ -151,13 +113,15 @@ func (pw *Paperwallet) sell(position broker.Position, optionalSellPrice decimal.
 	delete(pw.openPositions, position.Reference)
 
 	log.WithFields(log.Fields{
-		"Reason":                 reason,
-		"BuyTime":                position.BuyTime.Local(),
-		"SellTime":               position.SellTime.Local(),
-		"Reference":              position.Reference,
-		"TotalLossPositions":     getTotalLossPositions(pw.closedPositions),
-		"TotalPerformanceInPips": helper.Cent2Pips(decimal.NewFromFloat(getTotalPerf(pw.closedPositions))).Round(1),
-		"OpenPositions":          len(pw.openPositions),
+		"Reason":             reason,
+		"BuyTime":            position.BuyTime.Local(),
+		"SellTime":           position.SellTime.Local(),
+		"Reference":          position.Reference,
+		"Target":             position.TargetPrice,
+		"StopLoss":           position.StopLossPrice,
+		"TotalLossPositions": getTotalLossPositions(pw.closedPositions),
+		"TotalPerformance":   decimal.NewFromFloat(getTotalPerf(pw.closedPositions)).Round(1),
+		"OpenPositions":      len(pw.openPositions),
 	}).Info("Position closed")
 
 	return nil
@@ -179,16 +143,16 @@ func (pw *Paperwallet) Sell(position broker.Position) error {
 func (pw *Paperwallet) buyCheckTargetAndStopLoss(order broker.Order) error {
 	switch order.Direction {
 	case broker.BuyDirectionLong:
-		if order.TargetPrice.LessThan(pw.currentTick.Ask) {
-			return fmt.Errorf("target is below current price: %s < %s", order.TargetPrice, pw.currentTick.Ask)
-		}
+		//if order.TargetPrice.LessThan(pw.currentTick.Ask) {
+		//	return fmt.Errorf("target is below current price: %s < %s", order.TargetPrice, pw.currentTick.Ask)
+		//}
 		if pw.currentTick.Ask.LessThan(order.StopLossPrice) {
 			return fmt.Errorf("current price is below stop loss: %s < %s", pw.currentTick.Ask, order.StopLossPrice)
 		}
 	case broker.BuyDirectionShort:
-		if order.TargetPrice.GreaterThan(pw.currentTick.Bid) {
-			return fmt.Errorf("target is above current price: %s > %s", order.TargetPrice, pw.currentTick.Bid)
-		}
+		//if order.TargetPrice.GreaterThan(pw.currentTick.Bid) {
+		//	return fmt.Errorf("target is above current price: %s > %s", order.TargetPrice, pw.currentTick.Bid)
+		//}
 		if pw.currentTick.Bid.GreaterThan(order.StopLossPrice) {
 			return fmt.Errorf("current price is above stop loss: %s > %s", pw.currentTick.Bid, order.StopLossPrice)
 		}
@@ -253,6 +217,7 @@ func (pw *Paperwallet) checkOpenPositionsStopLoss(position broker.Position) (pos
 func (pw *Paperwallet) SetCurrenctPrice(currentTick tick.Tick) {
 	pw.Lock()
 	pw.currentTick = currentTick
+	pw.checkOpenOrders()
 	pw.checkOpenPositions()
 	pw.Unlock()
 }
@@ -267,8 +232,6 @@ func (pw *Paperwallet) checkOpenPositions() {
 			position.MaxDrawdown = perfPips
 			pw.openPositions[ref] = position
 		}
-
-		pw.updateTrailingStop(&position)
 
 		if pw.checkOpenPositionsTarget(position) {
 			continue

@@ -27,12 +27,6 @@ type HeikinAshi struct {
 	candlesReceived        bool
 }
 
-const (
-	orderNoteHeikinAshi1 = "HeikinAshi1"
-	orderNoteHeikinAshi2 = "HeikinAshi2"
-	orderNoteHeikinAshi3 = "HeikinAshi3"
-)
-
 func New(instrument string) *HeikinAshi {
 	clog := log.WithFields(log.Fields{"INSTRUMENT": instrument})
 
@@ -57,7 +51,7 @@ func (ha *HeikinAshi) GetWarmUpCandleAmount() uint {
 
 func (ha *HeikinAshi) ProcessWarmUpCandle(_ *ohlc.OHLC) {}
 
-func (ha *HeikinAshi) ProcessCandle(closedCandle *ohlc.OHLC, closedCandles []*ohlc.OHLC, currentTick tick.Tick, openPositions []broker.Position, _ []broker.Position) (toOpen []broker.Order, toClose []broker.Position) {
+func (ha *HeikinAshi) ProcessCandle(closedCandle *ohlc.OHLC, closedCandles []*ohlc.OHLC, currentTick tick.Tick, openOrders []broker.Order, openPositions []broker.Position, _ []broker.Position) (toOpen []broker.Order, toCloseOrderIDs []string, toClosePositions []broker.Position) {
 	if ha.GetCandleDuration() == time.Hour*24 && closedCandle.Start.Weekday() == time.Sunday {
 		return
 	}
@@ -112,7 +106,7 @@ func (ha *HeikinAshi) ProcessCandle(closedCandle *ohlc.OHLC, closedCandles []*oh
 			havePositionInRightDirection = true
 			continue
 		}
-		toClose = append(toClose, position)
+		toClosePositions = append(toClosePositions, position)
 	}
 	if havePositionInRightDirection {
 		return
@@ -133,15 +127,15 @@ func (ha *HeikinAshi) ProcessCandle(closedCandle *ohlc.OHLC, closedCandles []*oh
 	//	return
 	//}
 
-	order, err := ha.createOrder(haNow, currentTick, 0.20, direction, orderNoteHeikinAshi1, false)
+	order, err := ha.createOrder(haNow, currentTick, 0.20, direction)
 	if err == nil {
 		toOpen = append(toOpen, order)
 	}
-	order, err = ha.createOrder(haNow, currentTick, 0.50, direction, orderNoteHeikinAshi2, false)
+	order, err = ha.createOrder(haNow, currentTick, 0.50, direction)
 	if err == nil {
 		toOpen = append(toOpen, order)
 	}
-	order, err = ha.createOrder(haNow, currentTick, 0.95, direction, orderNoteHeikinAshi3, true)
+	order, err = ha.createOrder(haNow, currentTick, 0.95, direction)
 	if err == nil {
 		toOpen = append(toOpen, order)
 	}
@@ -174,7 +168,7 @@ func (ha *HeikinAshi) ProcessCandle(closedCandle *ohlc.OHLC, closedCandles []*oh
 //	return nil
 //}
 
-func (ha *HeikinAshi) createOrder(haCandle *ohlc.OHLC, currentTick tick.Tick, volaQuantileForTarget float64, direction broker.BuyDirection, note string, withTrailingStop bool) (broker.Order, error) {
+func (ha *HeikinAshi) createOrder(haCandle *ohlc.OHLC, currentTick tick.Tick, volaQuantileForTarget float64, direction broker.BuyDirection) (broker.Order, error) {
 	const size = 1
 
 	volaTargetFloat, err := ha.volaTracker.VolatilityInPercentageQuantile(volaQuantileForTarget)
@@ -204,13 +198,7 @@ func (ha *HeikinAshi) createOrder(haCandle *ohlc.OHLC, currentTick tick.Tick, vo
 		"OHLC.Age":        haCandle.Age(currentTick.Datetime).String(),
 	}).Debug("Creating new order")
 
-	if withTrailingStop {
-		stopDistancePips := decimal.NewFromFloat(80)
-		incrementSizePips := decimal.NewFromFloat(10)
-		return broker.NewOrderWithTrailingStop(direction, size, haCandle.Instrument, targetPrice, stopDistancePips, incrementSizePips, note), nil
-	} else {
-		return broker.NewOrder(direction, size, haCandle.Instrument, targetPrice, stopLossPrice, note), nil
-	}
+	return broker.NewMarketOrder(direction, size, haCandle.Instrument, targetPrice, stopLossPrice), nil
 }
 
 func isShortCandle(candle *ohlc.OHLC) bool {

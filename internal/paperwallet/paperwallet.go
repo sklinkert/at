@@ -14,19 +14,14 @@ type Paperwallet struct {
 	balance         decimal.Decimal
 	openPositions   map[string]broker.Position
 	closedPositions map[string]broker.Position
+	openOrders      map[string]broker.Order // orderID -> orders
 
 	tradingFeePercent decimal.Decimal
 	totalTradingFee   decimal.Decimal
 	spreadInCents     decimal.Decimal
 	slippageAbsolute  decimal.Decimal
 	currentTick       tick.Tick
-	trailingStops     map[string]TrailingStop
 	sync.RWMutex
-}
-
-type TrailingStop struct {
-	StopDistance        decimal.Decimal
-	IncrementSizeInPips decimal.Decimal
 }
 
 func WithInitialBalance(balance decimal.Decimal) Option {
@@ -68,7 +63,7 @@ func New(options ...Option) *Paperwallet {
 		balance:         decimal.NewFromFloat(defaultBalance),
 		openPositions:   map[string]broker.Position{},
 		closedPositions: map[string]broker.Position{},
-		trailingStops:   map[string]TrailingStop{},
+		openOrders:      map[string]broker.Order{},
 	}
 
 	for _, option := range options {

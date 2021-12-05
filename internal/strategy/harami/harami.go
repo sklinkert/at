@@ -26,7 +26,6 @@ type Harami struct {
 }
 
 const (
-	orderNote         = strategy.NameHarami
 	targetInPercent   = 100.0
 	stopLossInPercent = 0.5
 	smaCandles        = 200
@@ -82,7 +81,7 @@ func (h *Harami) isHaramiLong(firstCandle, secondCandle *ohlc.OHLC) bool {
 	return false
 }
 
-func (h *Harami) ProcessCandle(closedCandle *ohlc.OHLC, closedCandles []*ohlc.OHLC, _ tick.Tick, openPositions []broker.Position, _ []broker.Position) (toOpen []broker.Order, toClose []broker.Position) {
+func (h *Harami) ProcessCandle(closedCandle *ohlc.OHLC, closedCandles []*ohlc.OHLC, _ tick.Tick, openOrders []broker.Order, openPositions []broker.Position, _ []broker.Position) (toOpen []broker.Order, toCloseOrderIDs []string, toClosePositions []broker.Position) {
 	var closePrice = helper.DecimalToFloat(closedCandle.Close)
 
 	defer h.feedIndicator(closedCandle)
@@ -96,7 +95,7 @@ func (h *Harami) ProcessCandle(closedCandle *ohlc.OHLC, closedCandles []*ohlc.OH
 
 	if len(openPositions) > 0 {
 		if closePrice < smaPrice {
-			toClose = openPositions
+			toClosePositions = openPositions
 			return
 		}
 
@@ -105,7 +104,7 @@ func (h *Harami) ProcessCandle(closedCandle *ohlc.OHLC, closedCandles []*ohlc.OH
 			return
 		}
 		if helper.DecimalToFloat(closedCandle.Close) > previousCandlesHigh {
-			toClose = openPositions
+			toClosePositions = openPositions
 			return
 		}
 		return
@@ -115,7 +114,7 @@ func (h *Harami) ProcessCandle(closedCandle *ohlc.OHLC, closedCandles []*ohlc.OH
 	secondLatestCandle := closedCandles[len(closedCandles)-2]
 	if h.isHaramiLong(secondLatestCandle, latestCandle) {
 		toOpenNew := h.prepareOrder(closedCandle, broker.BuyDirectionLong, 1.00)
-		return []broker.Order{toOpenNew}, []broker.Position{}
+		return []broker.Order{toOpenNew}, []string{}, []broker.Position{}
 	}
 
 	h.clog.Debugf("No harami long candle found: %s", closedCandle)
@@ -136,7 +135,7 @@ func (h *Harami) prepareOrder(closedCandle *ohlc.OHLC, direction broker.BuyDirec
 		"StopLoss":  stopLossPrice,
 	}).Debug("Prepare new order")
 
-	return broker.NewOrder(direction, size, h.instrument, targetPrice, stopLossPrice, orderNote)
+	return broker.NewMarketOrder(direction, size, h.instrument, targetPrice, stopLossPrice)
 }
 
 func (h *Harami) Name() string {

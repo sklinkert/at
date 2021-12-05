@@ -32,7 +32,7 @@ type Strategy interface {
 
 	// ProcessCandle send the candle right after it has been closed.
 	// closedCandles contains the 100 most recent candles.
-	ProcessCandle(closedCandle *ohlc.OHLC, closedCandles []*ohlc.OHLC, currentTick tick.Tick, openPositions []broker.Position, closedPositions []broker.Position) (toOpen []broker.Order, toClose []broker.Position)
+	ProcessCandle(closedCandle *ohlc.OHLC, closedCandles []*ohlc.OHLC, currentTick tick.Tick, openOrders []broker.Order, openPositions []broker.Position, closedPositions []broker.Position) (toOpen []broker.Order, toCloseOrderIDs []string, toClosePositions []broker.Position)
 
 	// GetCandleDuration - Returns the durations for all candles required by a strategy.
 	GetCandleDuration() time.Duration
