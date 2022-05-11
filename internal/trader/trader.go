@@ -129,7 +129,7 @@ func WithFeedStoredCandles(strategy strategy.Strategy) Option {
 		log.Infof("WithFeedStoredCandles: Sending %d candles to strategy for warming up", len(candles))
 		for _, candle := range candles {
 			candle.ForceClose()
-			strategy.ProcessWarmUpCandle(&candle)
+			strategy.OnWarmUpCandle(&candle)
 		}
 	}
 }
@@ -305,7 +305,7 @@ func (tr *Trader) processClosedCandle(closedCandle *ohlc.OHLC, currentTick tick.
 	tr.detectClosedPositions(closedPositions)
 	tr.processOpenPositions(closedCandle, openPositions)
 
-	toOpen, toCloseOrderIDs, toClosePositons := tr.strategy.ProcessCandle(closedCandle, tr.closedCandles, currentTick,
+	toOpen, toCloseOrderIDs, toClosePositons := tr.strategy.OnCandle(closedCandle, tr.closedCandles, currentTick,
 		openOrders, openPositions, closedPositions)
 	tr.processClosableOrders(toCloseOrderIDs)
 	tr.processClosablePositions(toClosePositons)

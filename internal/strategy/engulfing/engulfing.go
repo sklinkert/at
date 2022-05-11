@@ -55,7 +55,7 @@ func (d *Engulfing) GetWarmUpCandleAmount() uint {
 	return smaCandles
 }
 
-func (d *Engulfing) ProcessWarmUpCandle(closedCandle *ohlc.OHLC) {
+func (d *Engulfing) OnWarmUpCandle(closedCandle *ohlc.OHLC) {
 	d.feedIndicator(closedCandle)
 }
 
@@ -84,7 +84,7 @@ func (d *Engulfing) noTradingPeriod(now time.Time) bool {
 	return false
 }
 
-func (d *Engulfing) ProcessCandle(closedCandle *ohlc.OHLC, closedCandles []*ohlc.OHLC, currentTick tick.Tick, openOrders []broker.Order, openPositions []broker.Position, closedPositions []broker.Position) (toOpen []broker.Order, toCloseOrderIDs []string, toClosePositions []broker.Position) {
+func (d *Engulfing) OnCandle(closedCandle *ohlc.OHLC, closedCandles []*ohlc.OHLC, currentTick tick.Tick, openOrders []broker.Order, openPositions []broker.Position, closedPositions []broker.Position) (toOpen []broker.Order, toCloseOrderIDs []string, toClosePositions []broker.Position) {
 	defer d.feedIndicator(closedCandle)
 
 	if strategyLongEnabled {

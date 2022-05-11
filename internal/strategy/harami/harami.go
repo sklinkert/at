@@ -48,7 +48,7 @@ func (h *Harami) GetWarmUpCandleAmount() uint {
 	return smaCandles
 }
 
-func (h *Harami) ProcessWarmUpCandle(closedCandle *ohlc.OHLC) {
+func (h *Harami) OnWarmUpCandle(closedCandle *ohlc.OHLC) {
 	h.feedIndicator(closedCandle)
 }
 
@@ -81,7 +81,7 @@ func (h *Harami) isHaramiLong(firstCandle, secondCandle *ohlc.OHLC) bool {
 	return false
 }
 
-func (h *Harami) ProcessCandle(closedCandle *ohlc.OHLC, closedCandles []*ohlc.OHLC, _ tick.Tick, openOrders []broker.Order, openPositions []broker.Position, _ []broker.Position) (toOpen []broker.Order, toCloseOrderIDs []string, toClosePositions []broker.Position) {
+func (h *Harami) OnCandle(closedCandle *ohlc.OHLC, closedCandles []*ohlc.OHLC, _ tick.Tick, openOrders []broker.Order, openPositions []broker.Position, _ []broker.Position) (toOpen []broker.Order, toCloseOrderIDs []string, toClosePositions []broker.Position) {
 	var closePrice = helper.DecimalToFloat(closedCandle.Close)
 
 	defer h.feedIndicator(closedCandle)

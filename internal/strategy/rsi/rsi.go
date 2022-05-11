@@ -47,7 +47,7 @@ func (d *RSI) GetCandleDuration() time.Duration {
 	return d.candleDuration
 }
 
-func (d *RSI) ProcessWarmUpCandle(closedCandle *ohlc.OHLC) {
+func (d *RSI) OnWarmUpCandle(closedCandle *ohlc.OHLC) {
 	d.rsi.Insert(closedCandle)
 	d.sma.Insert(closedCandle)
 
@@ -64,7 +64,7 @@ func (d *RSI) GetWarmUpCandleAmount() uint {
 	return rsiSize * 10
 }
 
-func (d *RSI) ProcessCandle(closedCandle *ohlc.OHLC, closedCandles []*ohlc.OHLC, currentTick tick.Tick, openOrders []broker.Order, openPositions []broker.Position, _ []broker.Position) (toOpen []broker.Order, toCloseOrderIDs []string, toClosePositions []broker.Position) {
+func (d *RSI) OnCandle(closedCandle *ohlc.OHLC, closedCandles []*ohlc.OHLC, currentTick tick.Tick, openOrders []broker.Order, openPositions []broker.Position, _ []broker.Position) (toOpen []broker.Order, toCloseOrderIDs []string, toClosePositions []broker.Position) {
 	d.rsi.Insert(closedCandle)
 	d.sma.Insert(closedCandle)
 

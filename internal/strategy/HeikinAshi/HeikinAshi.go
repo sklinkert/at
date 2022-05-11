@@ -49,9 +49,9 @@ func (ha *HeikinAshi) GetWarmUpCandleAmount() uint {
 	return 1
 }
 
-func (ha *HeikinAshi) ProcessWarmUpCandle(_ *ohlc.OHLC) {}
+func (ha *HeikinAshi) OnWarmUpCandle(_ *ohlc.OHLC) {}
 
-func (ha *HeikinAshi) ProcessCandle(closedCandle *ohlc.OHLC, closedCandles []*ohlc.OHLC, currentTick tick.Tick, openOrders []broker.Order, openPositions []broker.Position, _ []broker.Position) (toOpen []broker.Order, toCloseOrderIDs []string, toClosePositions []broker.Position) {
+func (ha *HeikinAshi) OnCandle(closedCandle *ohlc.OHLC, closedCandles []*ohlc.OHLC, currentTick tick.Tick, openOrders []broker.Order, openPositions []broker.Position, _ []broker.Position) (toOpen []broker.Order, toCloseOrderIDs []string, toClosePositions []broker.Position) {
 	if ha.GetCandleDuration() == time.Hour*24 && closedCandle.Start.Weekday() == time.Sunday {
 		return
 	}

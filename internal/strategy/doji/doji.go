@@ -45,7 +45,7 @@ func New(instrument string) *Doji {
 	}
 }
 
-func (d *Doji) ProcessWarmUpCandle(_ *ohlc.OHLC) {}
+func (d *Doji) OnWarmUpCandle(_ *ohlc.OHLC) {}
 
 func (d *Doji) sendTickToOHLC(currentTick tick.Tick) bool {
 	var isOpen = d.openCandle.NewPrice(currentTick.Price(), currentTick.Datetime)
@@ -71,7 +71,7 @@ func (d *Doji) GetCandleDuration() time.Duration {
 	return time.Hour * 24
 }
 
-func (d *Doji) ProcessCandle(_ *ohlc.OHLC, _ []*ohlc.OHLC, _ tick.Tick, _ []broker.Order, _ []broker.Position, _ []broker.Position) (toOpen []broker.Order, toCloseOrderIDs []string, toClosePositions []broker.Position) {
+func (d *Doji) OnCandle(_ *ohlc.OHLC, _ []*ohlc.OHLC, _ tick.Tick, _ []broker.Order, _ []broker.Position, _ []broker.Position) (toOpen []broker.Order, toCloseOrderIDs []string, toClosePositions []broker.Position) {
 	return
 }
 

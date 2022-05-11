@@ -33,7 +33,7 @@ func New(instrument string) *scalper {
 	return mr
 }
 
-func (mr *scalper) ProcessWarmUpCandle(_ *ohlc.OHLC) {}
+func (mr *scalper) OnWarmUpCandle(_ *ohlc.OHLC) {}
 
 func (mr *scalper) GetWarmUpCandleAmount() uint {
 	return 1
@@ -43,7 +43,7 @@ func (mr *scalper) GetCandleDuration() time.Duration {
 	return time.Minute * 5
 }
 
-func (mr *scalper) ProcessCandle(closedCandle *ohlc.OHLC, closedCandles []*ohlc.OHLC, currentTick tick.Tick, openOrders []broker.Order, openPositions []broker.Position, _ []broker.Position) (toOpen []broker.Order, toCloseOrderIDs []string, toClosePositions []broker.Position) {
+func (mr *scalper) OnCandle(closedCandle *ohlc.OHLC, closedCandles []*ohlc.OHLC, currentTick tick.Tick, openOrders []broker.Order, openPositions []broker.Position, _ []broker.Position) (toOpen []broker.Order, toCloseOrderIDs []string, toClosePositions []broker.Position) {
 	const candles = 10
 
 	if len(openPositions) > 0 {

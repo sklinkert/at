@@ -49,6 +49,7 @@ func (v *RSI) Value() (map[string]float64, error) {
 	var m = map[string]float64{}
 
 	closePrices := v.cb.Values()
+
 	if len(closePrices) < v.size+1 {
 		return nil, indicator.ErrNotEnoughData
 	}
