@@ -25,6 +25,8 @@ type LowCandle struct {
 	previousHighs *circularbuffer.CircularBuffer
 	ohlcPeriod    time.Duration
 	locEST        *time.Location
+	openPositions []broker.Position
+	openOrders    []broker.Order
 }
 
 const (
@@ -52,6 +54,14 @@ func New(instrument string, candleDuration time.Duration) *LowCandle {
 		ohlcPeriod:    candleDuration,
 		locEST:        locEST,
 	}
+}
+
+func (d *LowCandle) OnPosition(openPositions []broker.Position, _ []broker.Position) {
+	d.openPositions = openPositions
+}
+
+func (d *LowCandle) OnOrder(openOrders []broker.Order) {
+	d.openOrders = openOrders
 }
 
 func (d *LowCandle) GetWarmUpCandleAmount() uint {
@@ -96,23 +106,29 @@ func (d *LowCandle) noTradingPeriod(now time.Time) bool {
 	return false
 }
 
-func (d *LowCandle) OnCandle(closedCandle *ohlc.OHLC, closedCandles []*ohlc.OHLC, currentTick tick.Tick, openOrders []broker.Order, openPositions []broker.Position, closedPositions []broker.Position) (toOpen []broker.Order, toCloseOrderIDs []string, toClosePositions []broker.Position) {
+func (d *LowCandle) OnTick(_ tick.Tick) (toOpen, toClose []broker.Order, toClosePositions []broker.Position) {
+	return
+}
+
+func (d *LowCandle) OnCandle(closedCandles []*ohlc.OHLC) (toOpen []broker.Order, toClose []broker.Order, toClosePositions []broker.Position) {
+	closedCandle := closedCandles[len(closedCandles)-1]
 	defer d.feedIndicator(closedCandle)
 
 	if strategyLongEnabled {
-		toOpenLong, toCloseLong := d.strategyLong(closedCandle, closedCandles, currentTick, openPositions, closedPositions)
+		toOpenLong, toCloseLong := d.strategyLong(closedCandles)
 		toOpen = append(toOpen, toOpenLong...)
 		toClosePositions = append(toClosePositions, toCloseLong...)
 	}
 	if strategyShortEnabled {
-		toOpenShort, toCloseShort := d.strategyShort(closedCandle, closedCandles, currentTick, openPositions, closedPositions)
+		toOpenShort, toCloseShort := d.strategyShort(closedCandles)
 		toOpen = append(toOpen, toOpenShort...)
 		toClosePositions = append(toClosePositions, toCloseShort...)
 	}
 	return
 }
 
-func (d *LowCandle) strategyLong(closedCandle *ohlc.OHLC, closedCandles []*ohlc.OHLC, currentTick tick.Tick, openPositions []broker.Position, _ []broker.Position) (toOpen []broker.Order, toClose []broker.Position) {
+func (d *LowCandle) strategyLong(closedCandles []*ohlc.OHLC) (toOpen []broker.Order, toClose []broker.Position) {
+	var closedCandle = closedCandles[len(closedCandles)-1]
 	var closePrice = helper.DecimalToFloat(closedCandle.Close)
 	var lowPrice = helper.DecimalToFloat(closedCandle.Low)
 
@@ -123,7 +139,7 @@ func (d *LowCandle) strategyLong(closedCandle *ohlc.OHLC, closedCandles []*ohlc.
 	}
 	smaPrice := smaValue[sma.Value]
 
-	for _, openPosition := range openPositions {
+	for _, openPosition := range d.openPositions {
 		if openPosition.BuyDirection != broker.BuyDirectionLong {
 			continue
 		}
@@ -132,15 +148,15 @@ func (d *LowCandle) strategyLong(closedCandle *ohlc.OHLC, closedCandles []*ohlc.
 			return
 		}
 		if helper.DecimalToFloat(closedCandle.Close) > previousCandlesHigh {
-			toClose = openPositions
+			toClose = d.openPositions
 			return
 		}
 	}
-	if len(openPositions) > 0 {
+	if len(d.openPositions) > 0 {
 		return
 	}
 
-	if d.noTradingPeriod(currentTick.Datetime) {
+	if d.noTradingPeriod(closedCandle.End) {
 		d.clog.Info("No trading period")
 		return
 	}
@@ -164,7 +180,8 @@ func (d *LowCandle) strategyLong(closedCandle *ohlc.OHLC, closedCandles []*ohlc.
 	return
 }
 
-func (d *LowCandle) strategyShort(closedCandle *ohlc.OHLC, closedCandles []*ohlc.OHLC, currentTick tick.Tick, openPositions []broker.Position, _ []broker.Position) (toOpen []broker.Order, toClose []broker.Position) {
+func (d *LowCandle) strategyShort(closedCandles []*ohlc.OHLC) (toOpen []broker.Order, toClose []broker.Position) {
+	var closedCandle = closedCandles[len(closedCandles)-1]
 	var closePrice = helper.DecimalToFloat(closedCandle.Close)
 	var highPrice = helper.DecimalToFloat(closedCandle.High)
 
@@ -177,7 +194,7 @@ func (d *LowCandle) strategyShort(closedCandle *ohlc.OHLC, closedCandles []*ohlc
 	}
 	smaPrice := smaValue[sma.Value]
 
-	for _, openPosition := range openPositions {
+	for _, openPosition := range d.openPositions {
 		if openPosition.BuyDirection != broker.BuyDirectionShort {
 			continue
 		}
@@ -190,11 +207,11 @@ func (d *LowCandle) strategyShort(closedCandle *ohlc.OHLC, closedCandles []*ohlc
 			return
 		}
 	}
-	if len(openPositions) > 0 {
+	if len(d.openPositions) > 0 {
 		return
 	}
 
-	if d.noTradingPeriod(currentTick.Datetime) {
+	if d.noTradingPeriod(closedCandle.End) {
 		d.clog.Info("No trading period")
 		return
 	}

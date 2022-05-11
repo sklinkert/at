@@ -17,12 +17,14 @@ import (
 // Source: https://www.youtube.com/watch?v=_9Bmxylp63Y
 
 type SMA struct {
-	clog       *log.Entry
-	instrument string
-	sma        *sma.SMA
-	sma10      *sma.SMA
-	ohlcPeriod time.Duration
-	locEST     *time.Location
+	clog          *log.Entry
+	instrument    string
+	sma           *sma.SMA
+	sma10         *sma.SMA
+	ohlcPeriod    time.Duration
+	locEST        *time.Location
+	openPositions []broker.Position
+	openOrders    []broker.Order
 }
 
 const (
@@ -49,6 +51,14 @@ func New(instrument string, candleDuration time.Duration) *SMA {
 		ohlcPeriod: candleDuration,
 		locEST:     locEST,
 	}
+}
+
+func (d *SMA) OnPosition(openPositions []broker.Position, _ []broker.Position) {
+	d.openPositions = openPositions
+}
+
+func (d *SMA) OnOrder(openOrders []broker.Order) {
+	d.openOrders = openOrders
 }
 
 func (d *SMA) GetWarmUpCandleAmount() uint {
@@ -85,23 +95,29 @@ func (d *SMA) noTradingPeriod(now time.Time) bool {
 	return false
 }
 
-func (d *SMA) OnCandle(closedCandle *ohlc.OHLC, closedCandles []*ohlc.OHLC, currentTick tick.Tick, openOrders []broker.Order, openPositions []broker.Position, closedPositions []broker.Position) (toOpen []broker.Order, toCloseOrderIDs []string, toClosePositions []broker.Position) {
+func (d *SMA) OnTick(_ tick.Tick) (toOpen, toClose []broker.Order, toClosePositions []broker.Position) {
+	return
+}
+
+func (d *SMA) OnCandle(closedCandles []*ohlc.OHLC) (toOpen, toClose []broker.Order, toClosePositions []broker.Position) {
+	closedCandle := closedCandles[len(closedCandles)-1]
 	defer d.feedIndicator(closedCandle)
 
 	if strategyLongEnabled {
-		toOpenLong, toCloseLong := d.strategyLong(closedCandle, closedCandles, currentTick, openPositions, closedPositions)
+		toOpenLong, toCloseLong := d.strategyLong(closedCandles)
 		toOpen = append(toOpen, toOpenLong...)
 		toClosePositions = append(toClosePositions, toCloseLong...)
 	}
 	if strategyShortEnabled {
-		toOpenShort, toCloseShort := d.strategyShort(closedCandle, closedCandles, currentTick, openPositions, closedPositions)
+		toOpenShort, toCloseShort := d.strategyShort(closedCandles)
 		toOpen = append(toOpen, toOpenShort...)
 		toClosePositions = append(toClosePositions, toCloseShort...)
 	}
 	return
 }
 
-func (d *SMA) strategyLong(closedCandle *ohlc.OHLC, closedCandles []*ohlc.OHLC, currentTick tick.Tick, openPositions []broker.Position, _ []broker.Position) (toOpen []broker.Order, toClose []broker.Position) {
+func (d *SMA) strategyLong(closedCandles []*ohlc.OHLC) (toOpen []broker.Order, toClose []broker.Position) {
+	var closedCandle = closedCandles[len(closedCandles)-1]
 	var closePrice = helper.DecimalToFloat(closedCandle.Close)
 
 	smaValue, err := d.sma.Value()
@@ -117,20 +133,20 @@ func (d *SMA) strategyLong(closedCandle *ohlc.OHLC, closedCandles []*ohlc.OHLC, 
 	}
 	sma10Price := sma10[sma.Value]
 
-	for _, openPosition := range openPositions {
+	for _, openPosition := range d.openPositions {
 		if openPosition.BuyDirection != broker.BuyDirectionLong {
 			continue
 		}
 		if helper.DecimalToFloat(closedCandle.Close) > sma10Price {
-			toClose = openPositions
+			toClose = d.openPositions
 			return
 		}
 	}
-	if len(openPositions) > 0 {
+	if len(d.openPositions) > 0 {
 		return
 	}
 
-	if d.noTradingPeriod(currentTick.Datetime) {
+	if d.noTradingPeriod(closedCandle.End) {
 		d.clog.Info("No trading period")
 		return
 	}
@@ -148,7 +164,8 @@ func (d *SMA) strategyLong(closedCandle *ohlc.OHLC, closedCandles []*ohlc.OHLC, 
 	return
 }
 
-func (d *SMA) strategyShort(closedCandle *ohlc.OHLC, closedCandles []*ohlc.OHLC, currentTick tick.Tick, openPositions []broker.Position, _ []broker.Position) (toOpen []broker.Order, toClose []broker.Position) {
+func (d *SMA) strategyShort(closedCandles []*ohlc.OHLC) (toOpen []broker.Order, toClose []broker.Position) {
+	var closedCandle = closedCandles[len(closedCandles)-1]
 	var closePrice = helper.DecimalToFloat(closedCandle.Close)
 
 	smaValue, err := d.sma.Value()
@@ -164,20 +181,20 @@ func (d *SMA) strategyShort(closedCandle *ohlc.OHLC, closedCandles []*ohlc.OHLC,
 	}
 	sma10Price := sma10[sma.Value]
 
-	for _, openPosition := range openPositions {
+	for _, openPosition := range d.openPositions {
 		if openPosition.BuyDirection != broker.BuyDirectionShort {
 			continue
 		}
 		if helper.DecimalToFloat(closedCandle.Close) < sma10Price {
-			toClose = openPositions
+			toClose = d.openPositions
 			return
 		}
 	}
-	if len(openPositions) > 0 {
+	if len(d.openPositions) > 0 {
 		return
 	}
 
-	if d.noTradingPeriod(currentTick.Datetime) {
+	if d.noTradingPeriod(closedCandle.End) {
 		d.clog.Info("No trading period")
 		return
 	}

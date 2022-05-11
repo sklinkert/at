@@ -12,9 +12,11 @@ import (
 )
 
 type RSI struct {
-	clog       *log.Entry
-	instrument string
-	rsi        *stochrsi.StochRSI
+	clog          *log.Entry
+	instrument    string
+	rsi           *stochrsi.StochRSI
+	openPositions []broker.Position
+	openOrders    []broker.Order
 }
 
 const (
@@ -35,6 +37,18 @@ func New(instrument string) *RSI {
 	}
 }
 
+func (d *RSI) OnPosition(openPositions []broker.Position, _ []broker.Position) {
+	d.openPositions = openPositions
+}
+
+func (d *RSI) OnTick(_ tick.Tick) (toOpen, toClose []broker.Order, toClosePositions []broker.Position) {
+	return
+}
+
+func (d *RSI) OnOrder(openOrders []broker.Order) {
+	d.openOrders = openOrders
+}
+
 func (d *RSI) GetCandleDuration() time.Duration {
 	return ohlcPeriod
 }
@@ -45,14 +59,16 @@ func (d *RSI) GetWarmUpCandleAmount() uint {
 	return 1
 }
 
-func (d *RSI) OnCandle(closedCandle *ohlc.OHLC, closedCandles []*ohlc.OHLC, currentTick tick.Tick, openOrders []broker.Order, openPositions []broker.Position, _ []broker.Position) (toOpen []broker.Order, toCloseOrderIDs []string, toClosePositions []broker.Position) {
+func (d *RSI) OnCandle(closedCandles []*ohlc.OHLC) (toOpen, toClose []broker.Order, toClosePositions []broker.Position) {
+	closedCandle := closedCandles[len(closedCandles)-1]
+
 	d.rsi.Insert(closedCandle)
-	if len(openPositions) > 0 {
+	if len(d.openPositions) > 0 {
 		return
 	}
 
 	// No night trading
-	if currentTick.Datetime.Hour() < 10 || currentTick.Datetime.Hour() > 20 {
+	if closedCandle.End.Hour() < 10 || closedCandle.End.Hour() > 20 {
 		return
 	}
 
@@ -68,11 +84,11 @@ func (d *RSI) OnCandle(closedCandle *ohlc.OHLC, closedCandles []*ohlc.OHLC, curr
 	}
 	if kValue > upperThreshold && dValue > upperThreshold {
 		toOpenNew := d.prepareOrder(closedCandle, broker.BuyDirectionShort, 1.00)
-		return []broker.Order{toOpenNew}, []string{}, []broker.Position{}
+		return []broker.Order{toOpenNew}, []broker.Order{}, []broker.Position{}
 	}
 	if kValue < lowerThreshold && dValue < lowerThreshold {
 		toOpenNew := d.prepareOrder(closedCandle, broker.BuyDirectionLong, 1.00)
-		return []broker.Order{toOpenNew}, []string{}, []broker.Position{}
+		return []broker.Order{toOpenNew}, []broker.Order{}, []broker.Position{}
 	}
 	return
 }

@@ -21,21 +21,31 @@ const (
 )
 
 type Strategy interface {
-	// OnWarmUpCandle sends a closed candle from database to strategy for warming up indicators etc.
+	// Name returns the name of the strategy
+	Name() string
+
+	// OnCandle is processing a list of closed candles. Will be called right after a new candle has been closed.
+	// closedCandles contains the 100 most recent candles.
+	OnCandle(closedCandles []*ohlc.OHLC) (toOpen, toClose []broker.Order, toClosePositions []broker.Position)
+
+	// OnTick is processing a new tick. Will be called right after a new tick has been received.
+	OnTick(currentTick tick.Tick) (toOpen, toClose []broker.Order, toClosePositions []broker.Position)
+
+	// OnPosition is processing a new position. Will be called right after a new position has been opened or closed.
+	OnPosition(openPositions []broker.Position, closedPositions []broker.Position)
+
+	// OnOrder is processing a new order. Will be called right after a new order has been opened or closed.
+	OnOrder(openOrders []broker.Order)
+
+	// OnWarmUpCandle sends a closed candle from database to strategy for e.g. warming up indicators.
 	OnWarmUpCandle(closedCandle *ohlc.OHLC)
 
-	// GetWarmUpCandleAmount tells the trader how many warmup candles are required from database
+	// GetWarmUpCandleAmount tells the trader how many warmup candles are required from database. No guarantee that
+	// the strategy will receive the requested amount.
 	GetWarmUpCandleAmount() uint
-
-	// OnCandle send the candle right after it has been closed.
-	// closedCandles contains the 100 most recent candles.
-	OnCandle(closedCandle *ohlc.OHLC, closedCandles []*ohlc.OHLC, currentTick tick.Tick, openOrders []broker.Order, openPositions []broker.Position, closedPositions []broker.Position) (toOpen []broker.Order, toCloseOrderIDs []string, toClosePositions []broker.Position)
 
 	// GetCandleDuration - Returns the durations for all candles required by a strategy.
 	GetCandleDuration() time.Duration
-
-	// Name returns the name of the strategy
-	Name() string
 
 	// String explains the strategy settings, e.g. stop loss, target, etc.
 	String() string

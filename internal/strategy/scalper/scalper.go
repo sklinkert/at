@@ -15,7 +15,10 @@ import (
 // Entry: Do counter trade after a number of candles were in the same buy direction
 
 type scalper struct {
-	clog *log.Entry
+	clog          *log.Entry
+	openPositions []broker.Position
+	openOrders    []broker.Order
+	currentTick   tick.Tick
 }
 
 var (
@@ -33,6 +36,14 @@ func New(instrument string) *scalper {
 	return mr
 }
 
+func (mr *scalper) OnPosition(openPositions []broker.Position, _ []broker.Position) {
+	mr.openPositions = openPositions
+}
+
+func (mr *scalper) OnOrder(openOrders []broker.Order) {
+	mr.openOrders = openOrders
+}
+
 func (mr *scalper) OnWarmUpCandle(_ *ohlc.OHLC) {}
 
 func (mr *scalper) GetWarmUpCandleAmount() uint {
@@ -43,15 +54,22 @@ func (mr *scalper) GetCandleDuration() time.Duration {
 	return time.Minute * 5
 }
 
-func (mr *scalper) OnCandle(closedCandle *ohlc.OHLC, closedCandles []*ohlc.OHLC, currentTick tick.Tick, openOrders []broker.Order, openPositions []broker.Position, _ []broker.Position) (toOpen []broker.Order, toCloseOrderIDs []string, toClosePositions []broker.Position) {
+func (mr *scalper) OnTick(currentTick tick.Tick) (toOpen, toClose []broker.Order, toClosePositions []broker.Position) {
+	mr.currentTick = currentTick
+	return
+}
+
+func (mr *scalper) OnCandle(closedCandles []*ohlc.OHLC) (toOpen, toClose []broker.Order, toClosePositions []broker.Position) {
 	const candles = 10
 
-	if len(openPositions) > 0 {
+	if len(mr.openPositions) > 0 {
 		return
 	}
 	if len(closedCandles) < candles {
 		return
 	}
+
+	closedCandle := closedCandles[len(closedCandles)-1]
 
 	var buyDirection = getBuyDirection(closedCandle)
 	for i := len(closedCandles) - candles; i < len(closedCandles)-1; i++ {
@@ -62,7 +80,7 @@ func (mr *scalper) OnCandle(closedCandle *ohlc.OHLC, closedCandles []*ohlc.OHLC,
 		}
 	}
 
-	newOrder, err := mr.createOrder(closedCandle, currentTick, buyDirection, 1, "scalper")
+	newOrder, err := mr.createOrder(closedCandle, buyDirection, 1, "scalper")
 	if err != nil {
 		log.WithError(err).Errorf("createOrder() failed")
 		return
@@ -80,25 +98,25 @@ func getBuyDirection(candle *ohlc.OHLC) broker.BuyDirection {
 	}
 }
 
-func (mr *scalper) createOrder(openOHLC *ohlc.OHLC, currentTick tick.Tick, direction broker.BuyDirection, size float64, orderName string) (broker.Order, error) {
-	targetPrice, err := mr.calcTargetPrice(direction, currentTick, targetPercent)
+func (mr *scalper) createOrder(openOHLC *ohlc.OHLC, direction broker.BuyDirection, size float64, orderName string) (broker.Order, error) {
+	targetPrice, err := mr.calcTargetPrice(direction, mr.currentTick, targetPercent)
 	if err != nil {
 		return broker.Order{}, fmt.Errorf("calcTargetPrice() failed %v", err)
 	}
 
-	stopLossPrice, err := mr.calcStopLossPrice(direction, currentTick, stopLossPercent)
+	stopLossPrice, err := mr.calcStopLossPrice(direction, mr.currentTick, stopLossPercent)
 	if err != nil {
 		return broker.Order{}, fmt.Errorf("calcStopLossPrice() failed %v", err)
 	}
 
 	mr.clog.WithFields(log.Fields{
 		"Direction":       direction.String(),
-		"Time":            currentTick.Datetime,
-		"CurrentTick.Bid": currentTick.Bid,
-		"CurrentTick.Ask": currentTick.Ask,
+		"Time":            mr.currentTick.Datetime,
+		"CurrentTick.Bid": mr.currentTick.Bid,
+		"CurrentTick.Ask": mr.currentTick.Ask,
 		"TargetPrice":     targetPrice,
 		"StopLossPrice":   stopLossPrice,
-		"OHLC.Age":        openOHLC.Age(currentTick.Datetime).String(),
+		"OHLC.Age":        openOHLC.Age(mr.currentTick.Datetime).String(),
 	}).Debug("Creating new order")
 
 	return broker.NewMarketOrder(direction, size, openOHLC.Instrument, targetPrice, stopLossPrice), nil

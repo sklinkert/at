@@ -23,6 +23,8 @@ type Harami struct {
 	previousLows  *circularbuffer.CircularBuffer
 	previousHighs *circularbuffer.CircularBuffer
 	ohlcPeriod    time.Duration
+	openPositions []broker.Position
+	openOrders    []broker.Order
 }
 
 const (
@@ -81,7 +83,16 @@ func (h *Harami) isHaramiLong(firstCandle, secondCandle *ohlc.OHLC) bool {
 	return false
 }
 
-func (h *Harami) OnCandle(closedCandle *ohlc.OHLC, closedCandles []*ohlc.OHLC, _ tick.Tick, openOrders []broker.Order, openPositions []broker.Position, _ []broker.Position) (toOpen []broker.Order, toCloseOrderIDs []string, toClosePositions []broker.Position) {
+func (d *Harami) OnPosition(_ []broker.Position, _ []broker.Position) {}
+
+func (d *Harami) OnOrder(_ []broker.Order) {}
+
+func (d *Harami) OnTick(_ tick.Tick) (toOpen, toClose []broker.Order, toClosePositions []broker.Position) {
+	return
+}
+
+func (h *Harami) OnCandle(closedCandles []*ohlc.OHLC) (toOpen, toClose []broker.Order, toClosePositions []broker.Position) {
+	var closedCandle = closedCandles[len(closedCandles)-1]
 	var closePrice = helper.DecimalToFloat(closedCandle.Close)
 
 	defer h.feedIndicator(closedCandle)
@@ -93,9 +104,9 @@ func (h *Harami) OnCandle(closedCandle *ohlc.OHLC, closedCandles []*ohlc.OHLC, _
 	}
 	smaPrice := smaValue[sma.Value]
 
-	if len(openPositions) > 0 {
+	if len(h.openPositions) > 0 {
 		if closePrice < smaPrice {
-			toClosePositions = openPositions
+			toClosePositions = h.openPositions
 			return
 		}
 
@@ -104,7 +115,7 @@ func (h *Harami) OnCandle(closedCandle *ohlc.OHLC, closedCandles []*ohlc.OHLC, _
 			return
 		}
 		if helper.DecimalToFloat(closedCandle.Close) > previousCandlesHigh {
-			toClosePositions = openPositions
+			toClosePositions = h.openPositions
 			return
 		}
 		return
@@ -114,7 +125,7 @@ func (h *Harami) OnCandle(closedCandle *ohlc.OHLC, closedCandles []*ohlc.OHLC, _
 	secondLatestCandle := closedCandles[len(closedCandles)-2]
 	if h.isHaramiLong(secondLatestCandle, latestCandle) {
 		toOpenNew := h.prepareOrder(closedCandle, broker.BuyDirectionLong, 1.00)
-		return []broker.Order{toOpenNew}, []string{}, []broker.Position{}
+		return []broker.Order{toOpenNew}, []broker.Order{}, []broker.Position{}
 	}
 
 	h.clog.Debugf("No harami long candle found: %s", closedCandle)

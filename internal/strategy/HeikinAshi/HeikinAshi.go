@@ -25,6 +25,9 @@ type HeikinAshi struct {
 	volaTracker            *volatility.Volatility
 	sma                    indicator.Indicator
 	candlesReceived        bool
+	openPositions          []broker.Position
+	openOrders             []broker.Order
+	currentTick            tick.Tick
 }
 
 func New(instrument string) *HeikinAshi {
@@ -51,7 +54,17 @@ func (ha *HeikinAshi) GetWarmUpCandleAmount() uint {
 
 func (ha *HeikinAshi) OnWarmUpCandle(_ *ohlc.OHLC) {}
 
-func (ha *HeikinAshi) OnCandle(closedCandle *ohlc.OHLC, closedCandles []*ohlc.OHLC, currentTick tick.Tick, openOrders []broker.Order, openPositions []broker.Position, _ []broker.Position) (toOpen []broker.Order, toCloseOrderIDs []string, toClosePositions []broker.Position) {
+func (ha *HeikinAshi) OnPosition(_ []broker.Position, _ []broker.Position) {}
+func (ha *HeikinAshi) OnOrder(_ []broker.Order)                            {}
+
+func (ha *HeikinAshi) OnTick(currentTick tick.Tick) (toOpen, toClose []broker.Order, toClosePositions []broker.Position) {
+	ha.currentTick = currentTick
+	return
+}
+
+func (ha *HeikinAshi) OnCandle(closedCandles []*ohlc.OHLC) (toOpen, toClose []broker.Order, toClosePositions []broker.Position) {
+	closedCandle := closedCandles[len(closedCandles)-1]
+
 	if ha.GetCandleDuration() == time.Hour*24 && closedCandle.Start.Weekday() == time.Sunday {
 		return
 	}
@@ -101,7 +114,7 @@ func (ha *HeikinAshi) OnCandle(closedCandle *ohlc.OHLC, closedCandles []*ohlc.OH
 	}
 
 	var havePositionInRightDirection = false
-	for _, position := range openPositions {
+	for _, position := range ha.openPositions {
 		if position.BuyDirection == direction {
 			havePositionInRightDirection = true
 			continue
@@ -127,15 +140,15 @@ func (ha *HeikinAshi) OnCandle(closedCandle *ohlc.OHLC, closedCandles []*ohlc.OH
 	//	return
 	//}
 
-	order, err := ha.createOrder(haNow, currentTick, 0.20, direction)
+	order, err := ha.createOrder(haNow, ha.currentTick, 0.20, direction)
 	if err == nil {
 		toOpen = append(toOpen, order)
 	}
-	order, err = ha.createOrder(haNow, currentTick, 0.50, direction)
+	order, err = ha.createOrder(haNow, ha.currentTick, 0.50, direction)
 	if err == nil {
 		toOpen = append(toOpen, order)
 	}
-	order, err = ha.createOrder(haNow, currentTick, 0.95, direction)
+	order, err = ha.createOrder(haNow, ha.currentTick, 0.95, direction)
 	if err == nil {
 		toOpen = append(toOpen, order)
 	}

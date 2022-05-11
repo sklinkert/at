@@ -21,6 +21,8 @@ type Doji struct {
 	openCandle     *ohlc.OHLC
 	closedCandles  []*ohlc.OHLC
 	previousCandle *ohlc.OHLC
+	openPositions  []broker.Position
+	openOrders     []broker.Order
 }
 
 const (
@@ -47,6 +49,14 @@ func New(instrument string) *Doji {
 
 func (d *Doji) OnWarmUpCandle(_ *ohlc.OHLC) {}
 
+func (d *Doji) OnPosition(openPositions []broker.Position, _ []broker.Position) {
+	d.openPositions = openPositions
+}
+
+func (d *Doji) OnOrder(openOrders []broker.Order) {
+	d.openOrders = openOrders
+}
+
 func (d *Doji) sendTickToOHLC(currentTick tick.Tick) bool {
 	var isOpen = d.openCandle.NewPrice(currentTick.Price(), currentTick.Datetime)
 	if isOpen {
@@ -71,7 +81,11 @@ func (d *Doji) GetCandleDuration() time.Duration {
 	return time.Hour * 24
 }
 
-func (d *Doji) OnCandle(_ *ohlc.OHLC, _ []*ohlc.OHLC, _ tick.Tick, _ []broker.Order, _ []broker.Position, _ []broker.Position) (toOpen []broker.Order, toCloseOrderIDs []string, toClosePositions []broker.Position) {
+func (d *Doji) OnCandle([]*ohlc.OHLC) (toOpen []broker.Order, toClose []broker.Order, toClosePositions []broker.Position) {
+	return
+}
+
+func (d *Doji) OnTick(_ tick.Tick) (toOpen, toClose []broker.Order, toClosePositions []broker.Position) {
 	return
 }
 

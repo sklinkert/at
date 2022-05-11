@@ -19,6 +19,8 @@ type RSI struct {
 	rsi            *indicatorrsi.RSI
 	sma            *sma.SMA
 	candleDuration time.Duration
+	openPositions  []broker.Position
+	openOrders     []broker.Order
 }
 
 const (
@@ -64,7 +66,20 @@ func (d *RSI) GetWarmUpCandleAmount() uint {
 	return rsiSize * 10
 }
 
-func (d *RSI) OnCandle(closedCandle *ohlc.OHLC, closedCandles []*ohlc.OHLC, currentTick tick.Tick, openOrders []broker.Order, openPositions []broker.Position, _ []broker.Position) (toOpen []broker.Order, toCloseOrderIDs []string, toClosePositions []broker.Position) {
+func (d *RSI) OnPosition(openPositions []broker.Position, _ []broker.Position) {
+	d.openPositions = openPositions
+}
+
+func (d *RSI) OnOrder(openOrders []broker.Order) {
+	d.openOrders = openOrders
+}
+
+func (d *RSI) OnTick(_ tick.Tick) (toOpen, toClose []broker.Order, toClosePositions []broker.Position) {
+	return
+}
+
+func (d *RSI) OnCandle(closedCandles []*ohlc.OHLC) (toOpen, toClose []broker.Order, toClosePositions []broker.Position) {
+	closedCandle := closedCandles[len(closedCandles)-1]
 	d.rsi.Insert(closedCandle)
 	d.sma.Insert(closedCandle)
 
@@ -80,7 +95,7 @@ func (d *RSI) OnCandle(closedCandle *ohlc.OHLC, closedCandles []*ohlc.OHLC, curr
 	//	return
 	//}
 
-	for _, openPosition := range openPositions {
+	for _, openPosition := range d.openPositions {
 		//log.Infof("Have open position: %s", openPosition.String())
 
 		if openPosition.Age(closedCandle.End) > maxAgeOpenPosition &&
@@ -112,17 +127,17 @@ func (d *RSI) OnCandle(closedCandle *ohlc.OHLC, closedCandles []*ohlc.OHLC, curr
 			}
 		}
 	}
-	if len(openPositions) > 0 {
-		return toOpen, toCloseOrderIDs, toClosePositions
+	if len(d.openPositions) > 0 {
+		return toOpen, toClose, toClosePositions
 	}
 
 	if d.isRSIShortSignal() && d.isSMAShortSignal(closedCandle.Close) {
 		toOpenNew := d.prepareOrder(closedCandle, broker.BuyDirectionShort, 1.00)
-		return []broker.Order{toOpenNew}, []string{}, []broker.Position{}
+		return []broker.Order{toOpenNew}, []broker.Order{}, []broker.Position{}
 	}
 	if d.isRSILongSignal() && d.isSMALongSignal(closedCandle.Close) {
 		toOpenNew := d.prepareOrder(closedCandle, broker.BuyDirectionLong, 1.00)
-		return []broker.Order{toOpenNew}, []string{}, []broker.Position{}
+		return []broker.Order{toOpenNew}, []broker.Order{}, []broker.Position{}
 	}
 	return
 }

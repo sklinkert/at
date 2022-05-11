@@ -20,6 +20,8 @@ type RSIADX struct {
 	adx            *indicatoradx.ADX
 	candleDuration time.Duration
 	eo             *eo.EnvironmentOverlay
+	openPositions  []broker.Position
+	openOrders     []broker.Order
 }
 
 const (
@@ -43,6 +45,18 @@ func New(instrument string, candleDuration time.Duration) *RSIADX {
 		candleDuration: candleDuration,
 		eo:             eo.New(),
 	}
+}
+
+func (d *RSIADX) OnPosition(openPositions []broker.Position, _ []broker.Position) {
+	d.openPositions = openPositions
+}
+
+func (d *RSIADX) OnOrder(openOrders []broker.Order) {
+	d.openOrders = openOrders
+}
+
+func (d *RSIADX) OnTick(_ tick.Tick) (toOpen, toClose []broker.Order, toClosePositions []broker.Position) {
+	return
 }
 
 func (d *RSIADX) GetCandleDuration() time.Duration {
@@ -70,13 +84,15 @@ func (d *RSIADX) GetWarmUpCandleAmount() uint {
 	return adxCandles * 2
 }
 
-func (d *RSIADX) OnCandle(closedCandle *ohlc.OHLC, closedCandles []*ohlc.OHLC, _ tick.Tick, openOrders []broker.Order, openPositions []broker.Position, _ []broker.Position) (toOpen []broker.Order, toCloseOrderIDs []string, toClosePositions []broker.Position) {
+func (d *RSIADX) OnCandle(closedCandles []*ohlc.OHLC) (toOpen, toClose []broker.Order, toClosePositions []broker.Position) {
+	closedCandle := closedCandles[len(closedCandles)-1]
+
 	d.rsi.Insert(closedCandle)
 	d.adx.Insert(closedCandle)
 	d.eo.AddCandle(closedCandle)
 
-	if len(openPositions) > 0 {
-		return d.checkOpenPositions(closedCandle, closedCandles, openPositions)
+	if len(d.openPositions) > 0 {
+		return d.checkOpenPositions(closedCandle, closedCandles, d.openPositions)
 	}
 
 	if !d.isStrongADXTrend() {
@@ -85,15 +101,15 @@ func (d *RSIADX) OnCandle(closedCandle *ohlc.OHLC, closedCandles []*ohlc.OHLC, _
 
 	if d.isRSIShortSignal() {
 		toOpenNew := d.prepareOrder(closedCandle, broker.BuyDirectionShort, 1.00)
-		return []broker.Order{toOpenNew}, []string{}, []broker.Position{}
+		return []broker.Order{toOpenNew}, []broker.Order{}, []broker.Position{}
 	} else if d.isRSILongSignal() {
 		toOpenNew := d.prepareOrder(closedCandle, broker.BuyDirectionLong, 1.00)
-		return []broker.Order{toOpenNew}, []string{}, []broker.Position{}
+		return []broker.Order{toOpenNew}, []broker.Order{}, []broker.Position{}
 	}
 	return
 }
 
-func (d *RSIADX) checkOpenPositions(closedCandle *ohlc.OHLC, closedCandles []*ohlc.OHLC, openPositions []broker.Position) (toOpen []broker.Order, toCloseOrderIDs []string, toClosePositions []broker.Position) {
+func (d *RSIADX) checkOpenPositions(closedCandle *ohlc.OHLC, closedCandles []*ohlc.OHLC, openPositions []broker.Position) (toOpen, toClose []broker.Order, toClosePositions []broker.Position) {
 	var previousCandle = closedCandles[len(closedCandles)-2]
 
 	for _, openPosition := range openPositions {

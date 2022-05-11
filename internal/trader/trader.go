@@ -270,6 +270,9 @@ func (tr *Trader) receiveTicks() {
 
 func (tr *Trader) processTick(currentTick tick.Tick) {
 	var closedCandles = tr.processTickByOpenCandles(currentTick)
+
+	tr.strategy.OnTick(currentTick)
+
 	for _, closedCandle := range closedCandles {
 		tr.processClosedCandle(closedCandle, currentTick)
 	}
@@ -283,15 +286,19 @@ func (tr *Trader) processClosedCandle(closedCandle *ohlc.OHLC, currentTick tick.
 		return
 	}
 
+	if tr.strategy.GetCandleDuration() != closedCandle.Duration {
+		return
+	}
+
+	// Orders
 	openOrders, err := tr.broker.GetOpenOrders()
 	if err != nil {
 		tr.clog.WithError(err).Error("Cannot get open orders")
 		return
 	}
+	tr.strategy.OnOrder(openOrders)
 
-	if tr.strategy.GetCandleDuration() != closedCandle.Duration {
-		return
-	}
+	// Positions
 	openPositions, err := tr.getOpenPositions()
 	if err != nil {
 		tr.clog.WithError(err).Error("Cannot get open positions")
@@ -304,11 +311,12 @@ func (tr *Trader) processClosedCandle(closedCandle *ohlc.OHLC, currentTick tick.
 	}
 	tr.detectClosedPositions(closedPositions)
 	tr.processOpenPositions(closedCandle, openPositions)
+	tr.strategy.OnPosition(openPositions, closedPositions)
 
-	toOpen, toCloseOrderIDs, toClosePositons := tr.strategy.OnCandle(closedCandle, tr.closedCandles, currentTick,
-		openOrders, openPositions, closedPositions)
-	tr.processClosableOrders(toCloseOrderIDs)
-	tr.processClosablePositions(toClosePositons)
+	// Candle
+	toOpen, toClose, toClosePositions := tr.strategy.OnCandle(tr.closedCandles)
+	tr.processClosableOrders(toClose)
+	tr.processClosablePositions(toClosePositions)
 	tr.processOrders(closedCandle, currentTick, toOpen)
 
 	for _, subscriber := range tr.candleSubscribers {
@@ -316,10 +324,10 @@ func (tr *Trader) processClosedCandle(closedCandle *ohlc.OHLC, currentTick tick.
 	}
 }
 
-func (tr *Trader) processClosableOrders(orderIDs []string) {
-	for _, orderID := range orderIDs {
-		if err := tr.broker.CancelOrder(orderID); err != nil {
-			tr.clog.WithError(err).WithFields(log.Fields{"OrderID": orderID}).Error("Unable to cancel order")
+func (tr *Trader) processClosableOrders(orders []broker.Order) {
+	for _, order := range orders {
+		if err := tr.broker.CancelOrder(order.ID); err != nil {
+			tr.clog.WithError(err).WithFields(log.Fields{"OrderID": order.ID}).Error("Unable to cancel order")
 		}
 	}
 }
