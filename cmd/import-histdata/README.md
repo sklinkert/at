@@ -37,10 +37,10 @@ find ./data/ -name 'HISTDATA*zip' -exec unzip {} \;
 Now run the importer which generates 1min candles and stores them to local sqlite DB:
 
 ```shell
-IMPORT_HISTDATA_CSV_FILES=./data/DAT_ASCII_EURUSD_T_202001.csv,./data/DAT_ASCII_EURUSD_T_202002.csv go run cmd/import-histdata/main.go
+INSTRUMENT="SPXUSD" IMPORT_HISTDATA_CSV_FILES=`ls *.csv | tr "\n" ","` go run cmd/import-histdata/main.go
 ```
 
-Then you can run the backtesting tool to use the data.
+Then you can run the backtesting tool to use the data with the `.db` file in `./data`.
 
 ## TODOs
 

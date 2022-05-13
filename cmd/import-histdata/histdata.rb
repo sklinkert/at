@@ -10,7 +10,7 @@ require 'mechanize'
 agent = Mechanize.new
 agent.pluggable_parser.default = Mechanize::Download
 
-for i_date in 2020..2021 # change date
+for i_date in 2020..2023 # change date
   date = i_date.to_s
   for i_month in 1..12 # change month
     month = '%02d' % i_month
