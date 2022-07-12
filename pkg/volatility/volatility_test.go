@@ -15,9 +15,9 @@ func TestAddOHLC(t *testing.T) {
 	for i := 1; i < 12; i++ {
 		o := ohlc.New("test", now, time.Minute, false)
 		o.NewPrice(decimal.NewFromFloat(1.0), o.Start)
-		o.NewPrice(decimal.NewFromFloat(float64(i)+1), o.End)
+		o.NewPrice(decimal.NewFromFloat(float64(i)+1), o.Start)
 		fmt.Printf("ADD: %d -> %s\n", i, o.VolatilityInPercentage())
-		assert.True(t, o.Closed())
+		o.ForceClose()
 		v.AddOHLC(o)
 	}
 
@@ -39,8 +39,8 @@ func TestMedianVolatilityInPercentage(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		o := ohlc.New("EURUSD", now, time.Minute, false)
 		o.NewPrice(decimal.NewFromFloat(1.0), o.Start)
-		o.NewPrice(decimal.NewFromFloat(float64(i)+1.0), o.End)
-		assert.True(t, o.Closed())
+		o.NewPrice(decimal.NewFromFloat(float64(i)+1.0), o.Start)
+		o.ForceClose()
 		v.AddOHLC(o)
 	}
 

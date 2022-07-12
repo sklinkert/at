@@ -66,12 +66,10 @@ func (o *OHLC) NewPrice(price decimal.Decimal, now time.Time) bool {
 	if o.Closed() {
 		return false
 	}
-	if now.After(o.End) {
+
+	if now.After(o.End) || now.Equal(o.End) {
 		o.closed = true
 		return false
-	}
-	if now.Equal(o.End) {
-		o.closed = true
 	}
 
 	if price.GreaterThan(o.High) {

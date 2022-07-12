@@ -171,6 +171,7 @@ func TestOHLC_NewPrice(t *testing.T) {
 
 	// low
 	price = decimal.NewFromFloat(0.5)
+	closePrice := price
 	o.NewPrice(price, now)
 	assertDecimal(t, price, o.Low)
 	assertDecimal(t, price, o.Close)
@@ -179,8 +180,8 @@ func TestOHLC_NewPrice(t *testing.T) {
 	now = o.End
 	price = decimal.NewFromFloat(1.2)
 	considered := o.NewPrice(price, now)
-	assert.True(t, considered)
-	assertDecimal(t, price, o.Close)
+	assert.False(t, considered)
+	assertDecimal(t, closePrice, o.Close)
 	assert.True(t, o.closed)
 	assert.True(t, o.Closed())
 	assert.EqualTime(t, now, o.End)
