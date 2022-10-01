@@ -1,6 +1,7 @@
 package sqlite
 
 import (
+	"database/sql"
 	"fmt"
 	"regexp"
 	"strings"
@@ -66,8 +67,8 @@ func (m Migrator) HasColumn(value interface{}, name string) bool {
 
 		if name != "" {
 			m.DB.Raw(
-				"SELECT count(*) FROM sqlite_master WHERE type = ? AND tbl_name = ? AND (sql LIKE ? OR sql LIKE ? OR sql LIKE ?)",
-				"table", stmt.Table, `%"`+name+`" %`, `%`+name+` %`, "%`"+name+"`%",
+				"SELECT count(*) FROM sqlite_master WHERE type = ? AND tbl_name = ? AND (sql LIKE ? OR sql LIKE ? OR sql LIKE ? OR sql LIKE ? OR sql LIKE ?)",
+				"table", stmt.Table, `%"`+name+`" %`, `%`+name+` %`, "%`"+name+"`%", "%["+name+"]%", "%\t"+name+"\t%",
 			).Row().Scan(&count)
 		}
 		return nil
@@ -79,20 +80,72 @@ func (m Migrator) AlterColumn(value interface{}, name string) error {
 	return m.RunWithoutForeignKey(func() error {
 		return m.recreateTable(value, nil, func(rawDDL string, stmt *gorm.Statement) (sql string, sqlArgs []interface{}, err error) {
 			if field := stmt.Schema.LookUpField(name); field != nil {
-				reg, err := regexp.Compile("(`|'|\"| )" + field.DBName + "(`|'|\"| ) .*?,")
+				// lookup field from table definition, ddl might looks like `'name' int,` or `'name' int)`
+				reg, err := regexp.Compile("(`|'|\"| )" + field.DBName + "(`|'|\"| ) .*?(,|\\)\\s*$)")
 				if err != nil {
 					return "", nil, err
 				}
 
-				createSQL := reg.ReplaceAllString(rawDDL, fmt.Sprintf("`%v` ?,", field.DBName))
+				createSQL := reg.ReplaceAllString(rawDDL, fmt.Sprintf("`%v` ?$3", field.DBName))
+
+				if createSQL == rawDDL {
+					return "", nil, fmt.Errorf("failed to look up field %v from DDL %v", field.DBName, rawDDL)
+				}
 
 				return createSQL, []interface{}{m.FullDataTypeOf(field)}, nil
-
-			} else {
-				return "", nil, fmt.Errorf("failed to alter field with name %v", name)
 			}
+			return "", nil, fmt.Errorf("failed to alter field with name %v", name)
 		})
 	})
+}
+
+// ColumnTypes return columnTypes []gorm.ColumnType and execErr error
+func (m Migrator) ColumnTypes(value interface{}) ([]gorm.ColumnType, error) {
+	columnTypes := make([]gorm.ColumnType, 0)
+	execErr := m.RunWithValue(value, func(stmt *gorm.Statement) (err error) {
+		var (
+			sqls   []string
+			sqlDDL *ddl
+		)
+
+		if err := m.DB.Raw("SELECT sql FROM sqlite_master WHERE type IN ? AND tbl_name = ? AND sql IS NOT NULL order by type = ? desc", []string{"table", "index"}, stmt.Table, "table").Scan(&sqls).Error; err != nil {
+			return err
+		}
+
+		if sqlDDL, err = parseDDL(sqls...); err != nil {
+			return err
+		}
+
+		rows, err := m.DB.Session(&gorm.Session{}).Table(stmt.Table).Limit(1).Rows()
+		if err != nil {
+			return err
+		}
+		defer func() {
+			err = rows.Close()
+		}()
+
+		var rawColumnTypes []*sql.ColumnType
+		rawColumnTypes, err = rows.ColumnTypes()
+		if err != nil {
+			return err
+		}
+
+		for _, c := range rawColumnTypes {
+			columnType := migrator.ColumnType{SQLColumnType: c}
+			for _, column := range sqlDDL.columns {
+				if column.NameValue.String == c.Name() {
+					column.SQLColumnType = c
+					columnType = column
+					break
+				}
+			}
+			columnTypes = append(columnTypes, columnType)
+		}
+
+		return err
+	})
+
+	return columnTypes, execErr
 }
 
 func (m Migrator) DropColumn(value interface{}, name string) error {
@@ -101,7 +154,7 @@ func (m Migrator) DropColumn(value interface{}, name string) error {
 			name = field.DBName
 		}
 
-		reg, err := regexp.Compile("(`|'|\"| )" + name + "(`|'|\"| ) .*?,")
+		reg, err := regexp.Compile("(`|'|\"| |\\[)" + name + "(`|'|\"| |\\]) .*?,")
 		if err != nil {
 			return "", nil, err
 		}
@@ -181,8 +234,8 @@ func (m Migrator) HasConstraint(value interface{}, name string) bool {
 		}
 
 		m.DB.Raw(
-			"SELECT count(*) FROM sqlite_master WHERE type = ? AND tbl_name = ? AND (sql LIKE ? OR sql LIKE ? OR sql LIKE ?)",
-			"table", table, `%CONSTRAINT "`+name+`" %`, `%CONSTRAINT `+name+` %`, "%CONSTRAINT `"+name+"`%",
+			"SELECT count(*) FROM sqlite_master WHERE type = ? AND tbl_name = ? AND (sql LIKE ? OR sql LIKE ? OR sql LIKE ? OR sql LIKE ? OR sql LIKE ?)",
+			"table", table, `%CONSTRAINT "`+name+`" %`, `%CONSTRAINT `+name+` %`, "%CONSTRAINT `"+name+"`%", "%CONSTRAINT ["+name+"]%", "%CONSTRAINT \t"+name+"\t%",
 		).Row().Scan(&count)
 
 		return nil
@@ -350,14 +403,17 @@ func (m Migrator) recreateTable(value interface{}, tablePtr *string,
 		columns := createDDL.getColumns()
 
 		return m.DB.Transaction(func(tx *gorm.DB) error {
+			if err := tx.Exec(createSQL, sqlArgs...).Error; err != nil {
+				return err
+			}
+
 			queries := []string{
-				createSQL,
 				fmt.Sprintf("INSERT INTO `%v`(%v) SELECT %v FROM `%v`", newTableName, strings.Join(columns, ","), strings.Join(columns, ","), table),
 				fmt.Sprintf("DROP TABLE `%v`", table),
 				fmt.Sprintf("ALTER TABLE `%v` RENAME TO `%v`", newTableName, table),
 			}
 			for _, query := range queries {
-				if err := tx.Exec(query, sqlArgs...).Error; err != nil {
+				if err := tx.Exec(query).Error; err != nil {
 					return err
 				}
 			}
