@@ -58,7 +58,7 @@ github.com/jackc/pgtype
 github.com/jackc/pgx/v4
 github.com/jackc/pgx/v4/internal/sanitize
 github.com/jackc/pgx/v4/stdlib
-# github.com/jinzhu/copier v0.3.2
+# github.com/jinzhu/copier v0.3.5
 ## explicit
 github.com/jinzhu/copier
 # github.com/jinzhu/inflection v1.0.0
