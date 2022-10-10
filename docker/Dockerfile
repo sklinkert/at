@@ -1,4 +1,4 @@
-FROM golang:1.18.1-alpine
+FROM golang:alpine
 MAINTAINER Simon Klinkert
 ARG GITREV="unknown"
 
