@@ -20,7 +20,7 @@ require (
 	github.com/sklinkert/igmarkets v0.0.0-20211012140330-96568d0347d0
 	gorm.io/driver/postgres v1.3.10
 	gorm.io/driver/sqlite v1.3.6
-	gorm.io/gorm v1.23.7
+	gorm.io/gorm v1.24.1
 )
 
 require (
