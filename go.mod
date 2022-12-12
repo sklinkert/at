@@ -6,7 +6,7 @@ require (
 	github.com/AMekss/assert v0.0.0-20211108074654-c2d723ec709d
 	github.com/falzm/golang-ring v0.0.0-20171129155418-0d0f97841b7d
 	github.com/go-numb/go-ftx v0.0.0-20211102085954-3f1fa5e6acc1
-	github.com/go-test/deep v1.0.8
+	github.com/go-test/deep v1.1.0
 	github.com/google/uuid v1.3.0
 	github.com/gorilla/websocket v1.5.0
 	github.com/jinzhu/copier v0.3.5

@@ -30,7 +30,7 @@ github.com/go-numb/go-ftx/rest/private/wallet
 github.com/go-numb/go-ftx/rest/public/futures
 github.com/go-numb/go-ftx/rest/public/markets
 github.com/go-numb/go-ftx/types
-# github.com/go-test/deep v1.0.8
+# github.com/go-test/deep v1.1.0
 ## explicit; go 1.16
 github.com/go-test/deep
 # github.com/google/go-querystring v1.0.0
