@@ -49,9 +49,12 @@ type Statement struct {
 }
 
 type join struct {
-	Name  string
-	Conds []interface{}
-	On    *clause.Where
+	Name     string
+	Conds    []interface{}
+	On       *clause.Where
+	Selects  []string
+	Omits    []string
+	JoinType clause.JoinType
 }
 
 // StatementModifier statement modifier interface
@@ -179,6 +182,10 @@ func (stmt *Statement) AddVar(writer clause.Writer, vars ...interface{}) {
 			} else {
 				stmt.AddVar(writer, v.GormValue(stmt.Context, stmt.DB))
 			}
+		case clause.Interface:
+			c := clause.Clause{Name: v.Name()}
+			v.MergeClause(&c)
+			c.Build(stmt)
 		case clause.Expression:
 			v.Build(stmt)
 		case driver.Valuer:
@@ -540,8 +547,9 @@ func (stmt *Statement) clone() *Statement {
 }
 
 // SetColumn set column's value
-//   stmt.SetColumn("Name", "jinzhu") // Hooks Method
-//   stmt.SetColumn("Name", "jinzhu", true) // Callbacks Method
+//
+//	stmt.SetColumn("Name", "jinzhu") // Hooks Method
+//	stmt.SetColumn("Name", "jinzhu", true) // Callbacks Method
 func (stmt *Statement) SetColumn(name string, value interface{}, fromCallbacks ...bool) {
 	if v, ok := stmt.Dest.(map[string]interface{}); ok {
 		v[name] = value
