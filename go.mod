@@ -19,7 +19,7 @@ require (
 	github.com/sklinkert/circularbuffer v0.0.0-20210106170632-b66327ee381c
 	github.com/sklinkert/igmarkets v0.0.0-20211012140330-96568d0347d0
 	gorm.io/driver/postgres v1.3.10
-	gorm.io/driver/sqlite v1.4.3
+	gorm.io/driver/sqlite v1.4.4
 	gorm.io/gorm v1.24.0
 )
 
