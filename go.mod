@@ -12,7 +12,7 @@ require (
 	github.com/jinzhu/copier v0.3.5
 	github.com/lfritz/env v1.0.0
 	github.com/markcheno/go-talib v0.0.0-20190307022042-cd53a9264d70
-	github.com/piquette/finance-go v1.0.0
+	github.com/piquette/finance-go v1.1.0
 	github.com/preichenberger/go-coinbasepro/v2 v2.1.0
 	github.com/shopspring/decimal v1.3.1
 	github.com/sirupsen/logrus v1.9.0
