@@ -28,9 +28,24 @@ func isPrintable(s string) bool {
 	return true
 }
 
+// A list of Go types that should be converted to SQL primitives
 var convertibleTypes = []reflect.Type{reflect.TypeOf(time.Time{}), reflect.TypeOf(false), reflect.TypeOf([]byte{})}
 
+// RegEx matches only numeric values
 var numericPlaceholderRe = regexp.MustCompile(`\$\d+\$`)
+
+func isNumeric(k reflect.Kind) bool {
+	switch k {
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return true
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		return true
+	case reflect.Float32, reflect.Float64:
+		return true
+	default:
+		return false
+	}
+}
 
 // ExplainSQL generate SQL string with given parameters, the generated SQL is expected to be used in logger, execute it might introduce a SQL injection vulnerability
 func ExplainSQL(sql string, numericPlaceholder *regexp.Regexp, escaper string, avars ...interface{}) string {
@@ -70,33 +85,37 @@ func ExplainSQL(sql string, numericPlaceholder *regexp.Regexp, escaper string, a
 		case fmt.Stringer:
 			reflectValue := reflect.ValueOf(v)
 			switch reflectValue.Kind() {
-			case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-				vars[idx] = fmt.Sprintf("%d", reflectValue.Interface())
+			case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+				vars[idx] = strconv.FormatInt(reflectValue.Int(), 10)
+			case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+				vars[idx] = strconv.FormatUint(reflectValue.Uint(), 10)
 			case reflect.Float32, reflect.Float64:
-				vars[idx] = fmt.Sprintf("%.6f", reflectValue.Interface())
+				vars[idx] = strconv.FormatFloat(reflectValue.Float(), 'f', 6, 64)
 			case reflect.Bool:
-				vars[idx] = fmt.Sprintf("%t", reflectValue.Interface())
+				vars[idx] = strconv.FormatBool(reflectValue.Bool())
 			case reflect.String:
-				vars[idx] = escaper + strings.ReplaceAll(fmt.Sprintf("%v", v), escaper, "\\"+escaper) + escaper
+				vars[idx] = escaper + strings.ReplaceAll(fmt.Sprintf("%v", v), escaper, escaper+escaper) + escaper
 			default:
 				if v != nil && reflectValue.IsValid() && ((reflectValue.Kind() == reflect.Ptr && !reflectValue.IsNil()) || reflectValue.Kind() != reflect.Ptr) {
-					vars[idx] = escaper + strings.ReplaceAll(fmt.Sprintf("%v", v), escaper, "\\"+escaper) + escaper
+					vars[idx] = escaper + strings.ReplaceAll(fmt.Sprintf("%v", v), escaper, escaper+escaper) + escaper
 				} else {
 					vars[idx] = nullStr
 				}
 			}
 		case []byte:
 			if s := string(v); isPrintable(s) {
-				vars[idx] = escaper + strings.ReplaceAll(s, escaper, "\\"+escaper) + escaper
+				vars[idx] = escaper + strings.ReplaceAll(s, escaper, escaper+escaper) + escaper
 			} else {
 				vars[idx] = escaper + "<binary>" + escaper
 			}
 		case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
 			vars[idx] = utils.ToString(v)
-		case float64, float32:
-			vars[idx] = fmt.Sprintf("%.6f", v)
+		case float32:
+			vars[idx] = strconv.FormatFloat(float64(v), 'f', -1, 32)
+		case float64:
+			vars[idx] = strconv.FormatFloat(v, 'f', -1, 64)
 		case string:
-			vars[idx] = escaper + strings.ReplaceAll(v, escaper, "\\"+escaper) + escaper
+			vars[idx] = escaper + strings.ReplaceAll(v, escaper, escaper+escaper) + escaper
 		default:
 			rv := reflect.ValueOf(v)
 			if v == nil || !rv.IsValid() || rv.Kind() == reflect.Ptr && rv.IsNil() {
@@ -106,6 +125,15 @@ func ExplainSQL(sql string, numericPlaceholder *regexp.Regexp, escaper string, a
 				convertParams(v, idx)
 			} else if rv.Kind() == reflect.Ptr && !rv.IsZero() {
 				convertParams(reflect.Indirect(rv).Interface(), idx)
+			} else if isNumeric(rv.Kind()) {
+				switch {
+				case rv.CanInt():
+					vars[idx] = strconv.FormatInt(rv.Int(), 10)
+				case rv.CanUint():
+					vars[idx] = strconv.FormatUint(rv.Uint(), 10)
+				default:
+					vars[idx] = strconv.FormatFloat(rv.Float(), 'f', 6, 64)
+				}
 			} else {
 				for _, t := range convertibleTypes {
 					if rv.Type().ConvertibleTo(t) {
@@ -113,7 +141,7 @@ func ExplainSQL(sql string, numericPlaceholder *regexp.Regexp, escaper string, a
 						return
 					}
 				}
-				vars[idx] = escaper + strings.ReplaceAll(fmt.Sprint(v), escaper, "\\"+escaper) + escaper
+				vars[idx] = escaper + strings.ReplaceAll(fmt.Sprint(v), escaper, escaper+escaper) + escaper
 			}
 		}
 	}

@@ -34,25 +34,7 @@ func (expr Expr) Build(builder Builder) {
 	for _, v := range []byte(expr.SQL) {
 		if v == '?' && len(expr.Vars) > idx {
 			if afterParenthesis || expr.WithoutParentheses {
-				if _, ok := expr.Vars[idx].(driver.Valuer); ok {
-					builder.AddVar(builder, expr.Vars[idx])
-				} else {
-					switch rv := reflect.ValueOf(expr.Vars[idx]); rv.Kind() {
-					case reflect.Slice, reflect.Array:
-						if rv.Len() == 0 {
-							builder.AddVar(builder, nil)
-						} else {
-							for i := 0; i < rv.Len(); i++ {
-								if i > 0 {
-									builder.WriteByte(',')
-								}
-								builder.AddVar(builder, rv.Index(i).Interface())
-							}
-						}
-					default:
-						builder.AddVar(builder, expr.Vars[idx])
-					}
-				}
+				processValue(builder, expr.Vars[idx])
 			} else {
 				builder.AddVar(builder, expr.Vars[idx])
 			}
@@ -126,11 +108,15 @@ func (expr NamedExpr) Build(builder Builder) {
 	for _, v := range []byte(expr.SQL) {
 		if v == '@' && !inName {
 			inName = true
-			name = []byte{}
+			name = name[:0]
 		} else if v == ' ' || v == ',' || v == ')' || v == '"' || v == '\'' || v == '`' || v == '\r' || v == '\n' || v == ';' {
 			if inName {
 				if nv, ok := namedMap[string(name)]; ok {
-					builder.AddVar(builder, nv)
+					if afterParenthesis {
+						processValue(builder, nv)
+					} else {
+						builder.AddVar(builder, nv)
+					}
 				} else {
 					builder.WriteByte('@')
 					builder.WriteString(string(name))
@@ -142,25 +128,7 @@ func (expr NamedExpr) Build(builder Builder) {
 			builder.WriteByte(v)
 		} else if v == '?' && len(expr.Vars) > idx {
 			if afterParenthesis {
-				if _, ok := expr.Vars[idx].(driver.Valuer); ok {
-					builder.AddVar(builder, expr.Vars[idx])
-				} else {
-					switch rv := reflect.ValueOf(expr.Vars[idx]); rv.Kind() {
-					case reflect.Slice, reflect.Array:
-						if rv.Len() == 0 {
-							builder.AddVar(builder, nil)
-						} else {
-							for i := 0; i < rv.Len(); i++ {
-								if i > 0 {
-									builder.WriteByte(',')
-								}
-								builder.AddVar(builder, rv.Index(i).Interface())
-							}
-						}
-					default:
-						builder.AddVar(builder, expr.Vars[idx])
-					}
-				}
+				processValue(builder, expr.Vars[idx])
 			} else {
 				builder.AddVar(builder, expr.Vars[idx])
 			}
@@ -185,6 +153,31 @@ func (expr NamedExpr) Build(builder Builder) {
 			builder.WriteByte('@')
 			builder.WriteString(string(name))
 		}
+	}
+}
+
+// processValue handles different value types appropriately for SQL parameter binding
+// It checks for driver.Valuer first, then handles slices/arrays, and finally adds single values
+func processValue(builder Builder, value interface{}) {
+	if _, ok := value.(driver.Valuer); ok {
+		builder.AddVar(builder, value)
+		return
+	}
+
+	switch rv := reflect.ValueOf(value); rv.Kind() {
+	case reflect.Slice, reflect.Array:
+		if rv.Len() == 0 {
+			builder.AddVar(builder, nil)
+		} else {
+			for i := 0; i < rv.Len(); i++ {
+				if i > 0 {
+					builder.WriteByte(',')
+				}
+				builder.AddVar(builder, rv.Index(i).Interface())
+			}
+		}
+	default:
+		builder.AddVar(builder, value)
 	}
 }
 
@@ -246,15 +239,19 @@ func (eq Eq) Build(builder Builder) {
 
 	switch eq.Value.(type) {
 	case []string, []int, []int32, []int64, []uint, []uint32, []uint64, []interface{}:
-		builder.WriteString(" IN (")
 		rv := reflect.ValueOf(eq.Value)
-		for i := 0; i < rv.Len(); i++ {
-			if i > 0 {
-				builder.WriteByte(',')
+		if rv.Len() == 0 {
+			builder.WriteString(" IN (NULL)")
+		} else {
+			builder.WriteString(" IN (")
+			for i := 0; i < rv.Len(); i++ {
+				if i > 0 {
+					builder.WriteByte(',')
+				}
+				builder.AddVar(builder, rv.Index(i).Interface())
 			}
-			builder.AddVar(builder, rv.Index(i).Interface())
+			builder.WriteByte(')')
 		}
-		builder.WriteByte(')')
 	default:
 		if eqNil(eq.Value) {
 			builder.WriteString(" IS NULL")

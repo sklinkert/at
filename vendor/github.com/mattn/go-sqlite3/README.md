@@ -1,15 +1,24 @@
 go-sqlite3
 ==========
 
-[![GoDoc Reference](https://godoc.org/github.com/mattn/go-sqlite3?status.svg)](http://godoc.org/github.com/mattn/go-sqlite3)
+[![Go Reference](https://pkg.go.dev/badge/github.com/mattn/go-sqlite3.svg)](https://pkg.go.dev/github.com/mattn/go-sqlite3)
 [![GitHub Actions](https://github.com/mattn/go-sqlite3/workflows/Go/badge.svg)](https://github.com/mattn/go-sqlite3/actions?query=workflow%3AGo)
 [![Financial Contributors on Open Collective](https://opencollective.com/mattn-go-sqlite3/all/badge.svg?label=financial+contributors)](https://opencollective.com/mattn-go-sqlite3) 
 [![codecov](https://codecov.io/gh/mattn/go-sqlite3/branch/master/graph/badge.svg)](https://codecov.io/gh/mattn/go-sqlite3)
 [![Go Report Card](https://goreportcard.com/badge/github.com/mattn/go-sqlite3)](https://goreportcard.com/report/github.com/mattn/go-sqlite3)
 
-Latest stable version is v1.14 or later, not v2.
+## Sponsors
 
-~~**NOTE:** The increase to v2 was an accident. There were no major changes or features.~~
+This project is proudly sponsored by:
+
+<a href="https://coderabbit.link/mattn">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://victorious-bubble-f69a016683.media.strapiapp.com/White_Typemark_79b9189d19.svg">
+    <img src="https://victorious-bubble-f69a016683.media.strapiapp.com/Orange_Typemark_43bf516c9d.svg" alt="CodeRabbit" width="320">
+  </picture>
+</a>
+
+Latest stable version is v1.14 or later, not v2.
 
 # Description
 
@@ -35,12 +44,12 @@ This package follows the official [Golang Release Policy](https://golang.org/doc
   - [Android](#android)
 - [ARM](#arm)
 - [Cross Compile](#cross-compile)
-- [Google Cloud Platform](#google-cloud-platform)
+- [Compiling](#compiling)
   - [Linux](#linux)
     - [Alpine](#alpine)
     - [Fedora](#fedora)
     - [Ubuntu](#ubuntu)
-  - [Mac OSX](#mac-osx)
+  - [macOS](#mac-osx)
   - [Windows](#windows)
   - [Errors](#errors)
 - [User Authentication](#user-authentication)
@@ -70,9 +79,8 @@ This package can be installed with the `go get` command:
 
 _go-sqlite3_ is *cgo* package.
 If you want to build your app using go-sqlite3, you need gcc.
-However, after you have built and installed _go-sqlite3_ with `go install github.com/mattn/go-sqlite3` (which requires gcc), you can build your app without relying on gcc in future.
 
-***Important: because this is a `CGO` enabled package, you are required to set the environment variable `CGO_ENABLED=1` and have a `gcc` compile present within your path.***
+***Important: because this is a `CGO` enabled package, you are required to set the environment variable `CGO_ENABLED=1` and have a `gcc` compiler present within your path.***
 
 # API Reference
 
@@ -126,6 +134,7 @@ Boolean values can be one of:
 | Transaction Lock | `_txlock` | <ul><li>immediate</li><li>deferred</li><li>exclusive</li></ul> | Specify locking behavior for transactions. |
 | Writable Schema | `_writable_schema` | `Boolean` | When this pragma is on, the SQLITE_MASTER tables in which database can be changed using ordinary UPDATE, INSERT, and DELETE statements. Warning: misuse of this pragma can easily result in a corrupt database file. |
 | Cache Size | `_cache_size` | `int` | Maximum cache size; default is 2000K (2M). See [PRAGMA cache_size](https://sqlite.org/pragma.html#pragma_cache_size) |
+| Statement Cache Size | `_stmt_cache_size` | `int` | Maximum number of prepared statements cached per connection; default is 0 (disabled). Note that `sql.DB` is a connection pool, so each connection maintains its own independent cache. |
 
 
 ## DSN Examples
@@ -145,7 +154,7 @@ Click [here](https://golang.org/pkg/go/build/#hdr-Build_Constraints) for more in
 If you wish to build this library with additional extensions / features, use the following command:
 
 ```bash
-go build --tags "<FEATURE>"
+go build -tags "<FEATURE>"
 ```
 
 For available features, see the extension list.
@@ -154,7 +163,7 @@ When using multiple build tags, all the different tags should be space delimited
 Example:
 
 ```bash
-go build --tags "icu json1 fts5 secure_delete"
+go build -tags "icu json1 fts5 secure_delete"
 ```
 
 ### Feature / Extension List
@@ -165,6 +174,7 @@ go build --tags "icu json1 fts5 secure_delete"
 | Allow URI Authority | sqlite_allow_uri_authority | URI filenames normally throws an error if the authority section is not either empty or "localhost".<br><br>However, if SQLite is compiled with the SQLITE_ALLOW_URI_AUTHORITY compile-time option, then the URI is converted into a Uniform Naming Convention (UNC) filename and passed down to the underlying operating system that way |
 | App Armor | sqlite_app_armor | When defined, this C-preprocessor macro activates extra code that attempts to detect misuse of the SQLite API, such as passing in NULL pointers to required parameters or using objects after they have been destroyed. <br><br>App Armor is not available under `Windows`. |
 | Disable Load Extensions | sqlite_omit_load_extension | Loading of external extensions is enabled by default.<br><br>To disable extension loading add the build tag `sqlite_omit_load_extension`. |
+| Enable Serialization with `libsqlite3` | sqlite_serialize | Serialization and deserialization of a SQLite database is available by default, unless the build tag `libsqlite3` is set.<br><br>To enable this functionality even if `libsqlite3` is set, add the build tag `sqlite_serialize`. |
 | Foreign Keys | sqlite_foreign_keys | This macro determines whether enforcement of foreign key constraints is enabled or disabled by default for new database connections.<br><br>Each database connection can always turn enforcement of foreign key constraints on and off and run-time using the foreign_keys pragma.<br><br>Enforcement of foreign key constraints is normally off by default, but if this compile-time parameter is set to 1, enforcement of foreign key constraints will be on by default | 
 | Full Auto Vacuum | sqlite_vacuum_full | Set the default auto vacuum to full |
 | Incremental Auto Vacuum | sqlite_vacuum_incr | Set the default auto vacuum to incremental |
@@ -172,15 +182,20 @@ go build --tags "icu json1 fts5 secure_delete"
 |  International Components for Unicode | sqlite_icu | This option causes the International Components for Unicode or "ICU" extension to SQLite to be added to the build |
 | Introspect PRAGMAS | sqlite_introspect | This option adds some extra PRAGMA statements. <ul><li>PRAGMA function_list</li><li>PRAGMA module_list</li><li>PRAGMA pragma_list</li></ul> |
 | JSON SQL Functions | sqlite_json | When this option is defined in the amalgamation, the JSON SQL functions are added to the build automatically |
+| Math Functions | sqlite_math_functions | This compile-time option enables built-in scalar math functions. For more information see [Built-In Mathematical SQL Functions](https://www.sqlite.org/lang_mathfunc.html) |
+| OS Trace | sqlite_os_trace | This option enables OSTRACE() debug logging. This can be verbose and should not be used in production. |
+| Percentile | sqlite_percentile | This option enables [The Percentile Extension](sqlite.org/percentile.html). |
 | Pre Update Hook | sqlite_preupdate_hook | Registers a callback function that is invoked prior to each INSERT, UPDATE, and DELETE operation on a database table. |
 | Secure Delete | sqlite_secure_delete | This compile-time option changes the default setting of the secure_delete pragma.<br><br>When this option is not used, secure_delete defaults to off. When this option is present, secure_delete defaults to on.<br><br>The secure_delete setting causes deleted content to be overwritten with zeros. There is a small performance penalty since additional I/O must occur.<br><br>On the other hand, secure_delete can prevent fragments of sensitive information from lingering in unused parts of the database file after it has been deleted. See the documentation on the secure_delete pragma for additional information |
 | Secure Delete (FAST) | sqlite_secure_delete_fast | For more information see [PRAGMA secure_delete](https://www.sqlite.org/pragma.html#pragma_secure_delete) |
 | Tracing / Debug | sqlite_trace | Activate trace functions |
 | User Authentication | sqlite_userauth | SQLite User Authentication see [User Authentication](#user-authentication) for more information. |
+| Virtual Tables | sqlite_vtable | SQLite Virtual Tables see [SQLite Official VTABLE Documentation](https://www.sqlite.org/vtab.html) for more information, and a [full example here](https://github.com/mattn/go-sqlite3/tree/master/_example/vtable) |
+| The DBSTAT Virtual Table | sqlite_dbstat | The DBSTAT virtual table is a read-only virtual table that returns information about the amount of disk space used to store the content of an SQLite database. See [SQLite Official Documentation](https://www.sqlite.org/dbstat.html) for more information. |
 
 # Compilation
 
-This package requires the `CGO_ENABLED=1` ennvironment variable if not set by default, and the presence of the `gcc` compiler.
+This package requires the `CGO_ENABLED=1` environment variable if not set by default, and the presence of the `gcc` compiler.
 
 If you need to add additional CFLAGS or LDFLAGS to the build command, and do not want to modify this package, then this can be achieved by using the `CGO_CFLAGS` and `CGO_LDFLAGS` environment variables.
 
@@ -190,7 +205,7 @@ This package can be compiled for android.
 Compile with:
 
 ```bash
-go build --tags "android"
+go build -tags "android"
 ```
 
 For more information see [#201](https://github.com/mattn/go-sqlite3/issues/201)
@@ -215,21 +230,16 @@ This library can be cross-compiled.
 
 In some cases you are required to the `CC` environment variable with the cross compiler.
 
-## Cross Compiling from MAC OSX
-The simplest way to cross compile from OSX is to use [xgo](https://github.com/karalabe/xgo).
+## Cross Compiling from macOS
+The simplest way to cross compile from macOS is to use [xgo](https://github.com/karalabe/xgo).
 
 Steps:
-- Install [xgo](https://github.com/karalabe/xgo) (`go get github.com/karalabe/xgo`).
-- Ensure that your project is within your `GOPATH`.
-- Run `xgo local/path/to/project`.
+- Install [musl-cross](https://github.com/FiloSottile/homebrew-musl-cross) (`brew install FiloSottile/musl-cross/musl-cross`).
+- Run `CC=x86_64-linux-musl-gcc CXX=x86_64-linux-musl-g++ GOARCH=amd64 GOOS=linux CGO_ENABLED=1 go build -ldflags "-linkmode external -extldflags -static"`.
 
-Please refer to the project's [README](https://github.com/karalabe/xgo/blob/master/README.md) for further information.
+Please refer to the project's [README](https://github.com/FiloSottile/homebrew-musl-cross#readme) for further information.
 
-# Google Cloud Platform
-
-Building on GCP is not possible because Google Cloud Platform does not allow `gcc` to be executed.
-
-Please work only with compiled final binaries.
+# Compiling
 
 ## Linux
 
@@ -238,13 +248,13 @@ To compile this package on Linux, you must install the development tools for you
 To compile under linux use the build tag `linux`.
 
 ```bash
-go build --tags "linux"
+go build -tags "linux"
 ```
 
 If you wish to link directly to libsqlite3 then you can use the `libsqlite3` build tag.
 
 ```
-go build --tags "libsqlite3 linux"
+go build -tags "libsqlite3 linux"
 ```
 
 ### Alpine
@@ -267,9 +277,9 @@ sudo yum groupinstall "Development Tools" "Development Libraries"
 sudo apt-get install build-essential
 ```
 
-## Mac OSX
+## macOS
 
-OSX should have all the tools present to compile this package. If not, install XCode to add all the developers tools.
+macOS should have all the tools present to compile this package. If not, install XCode to add all the developers tools.
 
 Required dependency:
 
@@ -277,7 +287,7 @@ Required dependency:
 brew install sqlite3
 ```
 
-For OSX, there is an additional package to install which is required if you wish to build the `icu` extension.
+For macOS, there is an additional package to install which is required if you wish to build the `icu` extension.
 
 This additional package can be installed with `homebrew`:
 
@@ -285,16 +295,25 @@ This additional package can be installed with `homebrew`:
 brew upgrade icu4c
 ```
 
-To compile for Mac OSX:
+To compile for macOS on x86:
 
 ```bash
-go build --tags "darwin"
+go build -tags "darwin amd64"
+```
+
+To compile for macOS on ARM chips:
+
+```bash
+go build -tags "darwin arm64"
 ```
 
 If you wish to link directly to libsqlite3, use the `libsqlite3` build tag:
 
 ```
-go build --tags "libsqlite3 darwin"
+# x86 
+go build -tags "libsqlite3 darwin amd64"
+# ARM
+go build -tags "libsqlite3 darwin arm64"
 ```
 
 Additional information:
@@ -343,6 +362,8 @@ For example the TDM-GCC Toolchain can be found [here](https://jmeubank.github.io
     ```
 
 # User Authentication
+
+***This is deprecated***
 
 This package supports the SQLite User Authentication module.
 

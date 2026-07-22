@@ -1,3 +1,4 @@
+// Package logger provides a logger interface and its implementation for GORM.
 package logger
 
 import (
@@ -69,7 +70,7 @@ type Interface interface {
 }
 
 var (
-	// Discard Discard logger will print any log to io.Discard
+	// Discard logger will print any log to io.Discard
 	Discard = New(log.New(io.Discard, "", log.LstdFlags), Config{})
 	// Default Default logger
 	Default = New(log.New(os.Stdout, "\r\n", log.LstdFlags), Config{
@@ -78,8 +79,13 @@ var (
 		IgnoreRecordNotFoundError: false,
 		Colorful:                  true,
 	})
-	// Recorder Recorder logger records running SQL into a recorder instance
+	// Recorder logger records running SQL into a recorder instance
 	Recorder = traceRecorder{Interface: Default, BeginAt: time.Now()}
+
+	// RecorderParamsFilter defaults to no-op, allows to be run-over by a different implementation
+	RecorderParamsFilter = func(ctx context.Context, sql string, params ...interface{}) (string, []interface{}) {
+		return sql, params
+	}
 )
 
 // New initialize logger
@@ -129,28 +135,30 @@ func (l *logger) LogMode(level LogLevel) Interface {
 }
 
 // Info print info
-func (l logger) Info(ctx context.Context, msg string, data ...interface{}) {
+func (l *logger) Info(ctx context.Context, msg string, data ...interface{}) {
 	if l.LogLevel >= Info {
 		l.Printf(l.infoStr+msg, append([]interface{}{utils.FileWithLineNum()}, data...)...)
 	}
 }
 
 // Warn print warn messages
-func (l logger) Warn(ctx context.Context, msg string, data ...interface{}) {
+func (l *logger) Warn(ctx context.Context, msg string, data ...interface{}) {
 	if l.LogLevel >= Warn {
 		l.Printf(l.warnStr+msg, append([]interface{}{utils.FileWithLineNum()}, data...)...)
 	}
 }
 
 // Error print error messages
-func (l logger) Error(ctx context.Context, msg string, data ...interface{}) {
+func (l *logger) Error(ctx context.Context, msg string, data ...interface{}) {
 	if l.LogLevel >= Error {
 		l.Printf(l.errStr+msg, append([]interface{}{utils.FileWithLineNum()}, data...)...)
 	}
 }
 
 // Trace print sql message
-func (l logger) Trace(ctx context.Context, begin time.Time, fc func() (string, int64), err error) {
+//
+//nolint:cyclop
+func (l *logger) Trace(ctx context.Context, begin time.Time, fc func() (string, int64), err error) {
 	if l.LogLevel <= Silent {
 		return
 	}
@@ -182,8 +190,8 @@ func (l logger) Trace(ctx context.Context, begin time.Time, fc func() (string, i
 	}
 }
 
-// Trace print sql message
-func (l logger) ParamsFilter(ctx context.Context, sql string, params ...interface{}) (string, []interface{}) {
+// ParamsFilter filter params
+func (l *logger) ParamsFilter(ctx context.Context, sql string, params ...interface{}) (string, []interface{}) {
 	if l.Config.ParameterizedQueries {
 		return sql, nil
 	}
@@ -198,8 +206,8 @@ type traceRecorder struct {
 	Err          error
 }
 
-// New new trace recorder
-func (l traceRecorder) New() *traceRecorder {
+// New trace recorder
+func (l *traceRecorder) New() *traceRecorder {
 	return &traceRecorder{Interface: l.Interface, BeginAt: time.Now()}
 }
 
@@ -208,4 +216,11 @@ func (l *traceRecorder) Trace(ctx context.Context, begin time.Time, fc func() (s
 	l.BeginAt = begin
 	l.SQL, l.RowsAffected = fc()
 	l.Err = err
+}
+
+func (l *traceRecorder) ParamsFilter(ctx context.Context, sql string, params ...interface{}) (string, []interface{}) {
+	if RecorderParamsFilter == nil {
+		return sql, params
+	}
+	return RecorderParamsFilter(ctx, sql, params...)
 }
