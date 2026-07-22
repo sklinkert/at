@@ -1,36 +1,25 @@
-FROM golang:alpine
-MAINTAINER Simon Klinkert
+FROM golang:1.23-alpine AS build
 ARG GITREV="unknown"
 
-RUN mkdir -p /go/src/github.com/sklinkert/at
-WORKDIR /go/src/github.com/sklinkert/at
+# gcc/musl-dev are required because the SQLite driver needs CGO.
+RUN apk add --no-cache gcc musl-dev
 
-COPY pkg ./pkg
-COPY cmd ./cmd
+WORKDIR /src
+
+COPY go.mod go.sum ./
 COPY vendor ./vendor
+COPY cmd ./cmd
 COPY internal ./internal
-COPY go.mod ./go.mod
-COPY go.sum ./go.sum
+COPY pkg ./pkg
 
-## cmd/at-demo
-WORKDIR /go/src/github.com/sklinkert/at/cmd/at-demo
-RUN CGO_ENABLED=0 GOARCH=amd64 GOOS=linux go build -a -installsuffix cgo -ldflags="-w -s -X main.GitRev=${GITREV}" -o /at-demo .
+RUN CGO_ENABLED=1 GOOS=linux go build -mod=vendor \
+    -ldflags="-X main.GitRev=${GITREV}" \
+    -o /at-backtesting ./cmd/backtesting
 
-## cmd/at-web
-WORKDIR /go/src/github.com/sklinkert/at/cmd/at-web
-RUN CGO_ENABLED=0 GOARCH=amd64 GOOS=linux go build -a -installsuffix cgo -ldflags="-w -s -X main.GitRev=${GITREV}" -o /at-web .
+FROM alpine:3.20
 
-FROM scratch
+RUN apk add --no-cache ca-certificates tzdata
 
-# SSL certs
-COPY docker/ca-bundle.pem /etc/ssl/certs/ca-certificates.crt
+COPY --from=build /at-backtesting /usr/local/bin/at-backtesting
 
-# timezones
-COPY docker/zoneinfo.zip /zoneinfo.zip
-ENV ZONEINFO /zoneinfo.zip
-
-COPY --from=0 /at-demo /at-demo
-COPY --from=0 /at-web /at-web
-COPY --from=0 /go/src/github.com/sklinkert/at/internal/web/templates /internal/web/templates
-
-ENTRYPOINT ["/at-web"]
+ENTRYPOINT ["at-backtesting"]

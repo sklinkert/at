@@ -1,98 +1,99 @@
 # Automated Trader (at)
 
-[![tests](https://github.com/sklinkert/at/actions/workflows/ci.yaml/badge.svg)](https://github.com/sklinkert/at/actions/workflows/ci.yaml)
+[![CI](https://github.com/sklinkert/at/actions/workflows/ci.yaml/badge.svg)](https://github.com/sklinkert/at/actions/workflows/ci.yaml)
+[![Go Report Card](https://goreportcard.com/badge/github.com/sklinkert/at)](https://goreportcard.com/report/github.com/sklinkert/at)
+[![Go Reference](https://pkg.go.dev/badge/github.com/sklinkert/at.svg)](https://pkg.go.dev/github.com/sklinkert/at)
+[![Go Version](https://img.shields.io/github/go-mod/go-version/sklinkert/at)](go.mod)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-**Purpose**: Framework for building automated trading strategies in three steps:
+A Go framework for building, backtesting, and running automated trading strategies against real broker APIs. It works for stocks, forex, and crypto, and any broker can be plugged in behind a small interface.
 
-1. Build your own strategy.
-2. Verify it with the backtest module.
-3. Connect it to a real broker API to make some money.
+**This is a framework, not a ready-made trading bot.** The bundled strategies are illustrative examples, not profitable systems.
 
-Every broker API can be implemented. Works for stocks, forex, cryptocurrencies, etc.
+```
+ ticks / candles          decision            orders
+ ───────────────▶  Strategy ────────▶  Trader ───────▶  Broker
+    (Trader)         (your logic)      (this repo)     (IG, Coinbase, …)
+```
 
-**Supported brokers**:
+## Why use it
 
-|  Broker    |  Demo account | Paperwallet trading |  Real trading   | Backtesting (historical prices) |
-| ---- | ---- | ---- | ---- | ---- |
-| IG.com   |  ✅    |   ❌   | ✅ | ✅
-|  Coinbase    |   ❌   |  ✅    | ❌ | ✅
-|  FTX    |   ❌   |  ✅    | ❌ | ❌
+- **Plug-in architecture** — brokers, strategies, and indicators are all small interfaces. Implement one, wire it in, done.
+- **Backtest before you risk money** — replay historical prices with configurable spreads and trading fees, then print a performance summary and equity curve.
+- **Paperwallet** — simulate fills for brokers without a sandbox, so you can dry-run against live prices.
 
+## Quick start
 
-**Disclaimer**: The developers are not liable for any losses arising from the buy or sell of securities. All included strategies are examples and in no case ready trading systems.
-
-## Installation
+Runs a full backtest with **no external data source or account** — a small sample EUR/USD dataset ships in `examples/sample-data/`.
 
 ```sh
-go get github.com/sklinkert/at
+# 1. Import the sample tick data into a local SQLite DB (creates ./data/EURUSD.db)
+IMPORT_HISTDATA_CSV_FILES="examples/sample-data/EURUSD-2021-01.csv" \
+INSTRUMENT="EURUSD" \
+  go run ./cmd/import-histdata
+
+# 2. Backtest the RSI strategy against it
+PRICE_SOURCE="LOCAL_DB" \
+PRICE_DB_FILE="./data/EURUSD.db" \
+INSTRUMENT="EURUSD" \
+STRATEGY="rsi" \
+CANDLE_DURATION="1m" \
+YEAR_FROM=2021 MONTH_FROM=1 YEAR_TO=2021 MONTH_TO=1 \
+  go run ./cmd/backtesting
 ```
 
-Example backtesting run:
+The backtest prints a trade-by-trade log and a summary (positions, win rate, performance in pips), writes `results/backtesting_result.csv`, and serves an interactive chart at `http://localhost:8080/chart`.
 
-```shell
-INSTRUMENT="BTC-USD" STRATEGY="rsi" CANDLE_DURATION=24h YEAR_FROM=2021 MONTH_FROM=4 YEAR_TO=2021 MONTH_TO=12 PRICE_SOURCE="COINBASE" go run -ldflags="-w -s -X main.GitRev=123" ./cmd/backtesting/main.go
-```
+See [`.env.example`](.env.example) for every configuration variable and its default.
 
-Uses ETHUSD candles from Coinbase via api.pattern-trading.com
+## Supported brokers
 
-## Overview
+| Broker   | Demo account | Paperwallet trading | Real trading | Backtesting |
+| -------- | :----------: | :-----------------: | :----------: | :---------: |
+| IG.com   |      ✅      |         ❌          |      ✅      |     ✅      |
+| Coinbase |      ❌      |         ✅          |      ❌      |     ✅      |
+
+## Architecture
+
+The `Trader` is the nerve center: it receives prices from a broker, forwards them to your strategy, and executes the orders the strategy returns.
+
+1. The trader sends closed candles ([what is a candlestick?](https://www.investopedia.com/terms/c/candlestick.asp)) and the current tick to the strategy.
+2. The strategy optionally feeds indicators and reads their latest values.
+3. The strategy decides which positions to open and which to close.
+4. The trader executes those orders and closes positions through the broker API.
+
+### Packages
+
+- **`internal/broker`** — the [`Broker`](internal/broker/broker.go) interface plus IG and Coinbase implementations. [`internal/paperwallet`](internal/paperwallet) simulates fills for brokers without a sandbox.
+- **`internal/strategy`** — the [`Strategy`](internal/strategy/strategy.go) interface and example strategies: `rsi`, `rsiadx`, `sma10`, `stochrsi`, `doji`, `engulfing`, `harami`, `lowcandle`, `scalper`, `heikinashi`.
+- **`pkg/indicator`** — the [`Indicator`](pkg/indicator/indicator.go) interface and implementations (SMA, RSI, ADX, Stoch, StochRSI) wrapping [go-talib](https://github.com/markcheno/go-talib).
+- **`pkg/eo`** — environment overlays that adapt a strategy to market volatility (e.g. require a stronger signal in dangerous conditions).
+- **`pkg/chart`** — renders the equity curve and price chart as HTML.
+
+New to the code? Start with the [`Strategy`](internal/strategy/strategy.go) interface, then read [`internal/strategy/rsi`](internal/strategy/rsi) as a worked example.
 
 ![Overview](docs/overview.png)
 
-## Packages
+## Backtesting
 
-### broker
-
-Implements concrete broker API. [paperwallet](https://github.com/sklinkert/at/tree/master/internal/paperwallet) can be used if a broker does not offer testing/sandbox accounts for trading without real money. 
-
-### trader
-
-The nerve center of the program. It connects the broker with strategies.
-
-### indicator
-
-Implements various trading indicator like Simple Moving Average (SMA) or RSI. Indicators should implement [this interface](https://github.com/sklinkert/at/blob/master/pkg/indicator/indicator.go).
-
-### strategy
-
-Implements various trading strategies. Each strategy needs to implement [this interface](https://github.com/sklinkert/at/blob/master/internal/strategy/strategy.go#L26) thus the trader is able to connect.
-
-General flow: 
-1. Trader sends candlesticks ([what is a candlestick?](https://www.investopedia.com/terms/c/candlestick.asp)) and the current price (tick) to the strategy
-2. Optional: The strategy feeds indicators and retrieves the latest indicator values
-3. The strategy decides if trader should open a new position and which position should be closed.
-4. Trader executes new orders or closes open positions via broker APIs.
-
-### environment overlays (eo) 
-
-EOs can help to adjust a strategy according to the market volatility in order to reduce risk. E.g. you might want to buy when RSI indicator is below 25. However, if the market is getting dangerous due to high volatility you might only buy if RSI falls below 10 to ensure you buy only when indicator signals are stronger.
-
-## backtesting
-
-The `backtest` module can apply historical price simulations to your strategy.
-
-You can configure tradings fees and spreads to simulate trading like with real money.
+The backtest module replays historical prices through your strategy. Configure trading fees and spreads to approximate real conditions.
 
 ![Terminal output](docs/backtest-result.png)
 
-It can also print a chart with a beautiful equity curve:
+It can also render an equity curve:
 
-![Terminal output](docs/backtest-equity-curve.png)
+![Equity curve](docs/backtest-equity-curve.png)
 
-You can use Coinbase and **histdata.com** prices for backtestings. Check [cmd/import-histdata](https://github.com/sklinkert/at/tree/master/cmd/import-histdata) for more.
+Price data comes from a local SQLite database. Import your own [histdata.com](https://www.histdata.com/) CSV files with [`cmd/import-histdata`](cmd/import-histdata) — the same tool used in the quick start.
 
-## Contribution
+## Contributing
 
-Feel free to send PRs. I'm always happy to discuss and improve the code.
+Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for how to build, test, lint, and add a new strategy or indicator.
 
-For hosting I can recommend DigitalOcean:
+## Disclaimer
 
-[![DigitalOcean Referral Badge](https://web-platforms.sfo2.digitaloceanspaces.com/WWW/Badge%203.svg)](https://www.digitalocean.com/?refcode=4a328aa341e2&utm_campaign=Referral_Invite&utm_medium=Referral_Program&utm_source=badge)
+The developers are not liable for any losses arising from buying or selling securities. All included strategies are examples and are in no case ready trading systems. Trade at your own risk.
 
-## Donations
+## License
 
-In case you want to show some love:
-
-- BTC: 3BNnZUfw9qnLVnza9FvWF6n7tEXfWYVVy2
-- ETH: 0xd30638F4fD54aeDB458d30504DD1cF2ce7563D36
-- XMR: 45At7ezTicAejiLWTAfb28NNXnciH1M67VRrxLRHgfFyimHuPNP7MqbiUgYwwdTzXjbGFwCMsoMoH1Cvv7jPqKKANuaMpjo
+[MIT](LICENSE)

@@ -4,6 +4,18 @@
 .DS_Store
 .idea/
 *.csv
+# Keep the bundled sample dataset used by the quick start.
+!examples/sample-data/*.csv
+
+# Backtest output directory
+/results/
+
+# Compiled command binaries accidentally built into the repo root
+/at
+/backtesting
+/at-ig
+/at-coinbase
+/import-histdata
 
 # Binaries for programs and plugins
 *.exe
