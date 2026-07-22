@@ -2,12 +2,13 @@ package paperwallet
 
 import (
 	"fmt"
+	"log/slog"
+	"sort"
+
 	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
-	log "github.com/sirupsen/logrus"
 	"github.com/sklinkert/at/internal/broker"
 	"github.com/sklinkert/at/pkg/tick"
-	"sort"
 )
 
 // Buy open new position with target and stop loss
@@ -16,7 +17,7 @@ func (pw *Paperwallet) Buy(order broker.Order) (orderID string, err error) {
 	defer pw.Unlock()
 
 	if err := order.Valid(); err != nil {
-		log.WithError(err).Fatalf("Order is not valid: %+v", order)
+		return "", fmt.Errorf("order is not valid: %+v: %w", order, err)
 	}
 	if err := pw.buyCheckTargetAndStopLoss(order); err != nil {
 		return "", err
@@ -36,7 +37,7 @@ func (pw *Paperwallet) openPosition(orderID string, order broker.Order) broker.P
 	positionRef := uuid.New().String()
 	_, exists := pw.openPositions[positionRef]
 	if exists {
-		log.Fatalf("Buy: Position %q already exists", positionRef)
+		panic(fmt.Sprintf("Buy: Position %q already exists", positionRef))
 	}
 
 	position := broker.Position{
@@ -52,11 +53,11 @@ func (pw *Paperwallet) openPosition(orderID string, order broker.Order) broker.P
 	pw.openPositions[position.Reference] = position
 	delete(pw.openOrders, orderID)
 
-	log.WithFields(log.Fields{
-		"BuyTime":   pw.openPositions[positionRef].BuyTime,
-		"Reference": pw.openPositions[positionRef].Reference,
-		"Size":      order.Size,
-	}).Debug("New position")
+	slog.Debug("New position",
+		"BuyTime", pw.openPositions[positionRef].BuyTime,
+		"Reference", pw.openPositions[positionRef].Reference,
+		"Size", order.Size,
+	)
 
 	return position
 }
@@ -78,11 +79,8 @@ func (pw *Paperwallet) getSellPriceByDirection(direction broker.BuyDirection, sl
 		}
 		return pw.currentTick.Ask
 	default:
-		log.Fatal("unsupported direction", direction)
+		panic(fmt.Sprintf("unsupported direction: %v", direction))
 	}
-
-	// Never reached
-	return decimal.Zero
 }
 
 var dec100 = decimal.NewFromFloat(100)
@@ -106,23 +104,23 @@ func (pw *Paperwallet) sell(position broker.Position, optionalSellPrice decimal.
 
 	_, exists = pw.closedPositions[position.Reference]
 	if exists {
-		log.Fatalf("sell: position.Reference already exists in pw.closedPositions: %q", position.Reference)
+		panic(fmt.Sprintf("sell: position.Reference already exists in pw.closedPositions: %q", position.Reference))
 	}
 	pw.closedPositions[position.Reference] = position
 	pw.updateBalance(&position)
 	delete(pw.openPositions, position.Reference)
 
-	log.WithFields(log.Fields{
-		"Reason":             reason,
-		"BuyTime":            position.BuyTime.Local(),
-		"SellTime":           position.SellTime.Local(),
-		"Reference":          position.Reference,
-		"Target":             position.TargetPrice,
-		"StopLoss":           position.StopLossPrice,
-		"TotalLossPositions": getTotalLossPositions(pw.closedPositions),
-		"TotalPerformance":   decimal.NewFromFloat(getTotalPerf(pw.closedPositions)).Round(1),
-		"OpenPositions":      len(pw.openPositions),
-	}).Info("Position closed")
+	slog.Info("Position closed",
+		"Reason", reason,
+		"BuyTime", position.BuyTime.Local(),
+		"SellTime", position.SellTime.Local(),
+		"Reference", position.Reference,
+		"Target", position.TargetPrice,
+		"StopLoss", position.StopLossPrice,
+		"TotalLossPositions", getTotalLossPositions(pw.closedPositions),
+		"TotalPerformance", decimal.NewFromFloat(getTotalPerf(pw.closedPositions)).Round(1),
+		"OpenPositions", len(pw.openPositions),
+	)
 
 	return nil
 }
@@ -157,7 +155,7 @@ func (pw *Paperwallet) buyCheckTargetAndStopLoss(order broker.Order) error {
 			return fmt.Errorf("current price is above stop loss: %s > %s", pw.currentTick.Bid, order.StopLossPrice)
 		}
 	default:
-		log.Fatalf("unsupported order direction %s", order.Direction)
+		return fmt.Errorf("unsupported order direction %s", order.Direction)
 	}
 	return nil
 }
@@ -173,11 +171,8 @@ func (pw *Paperwallet) getBuyPriceByDirection(direction broker.BuyDirection) dec
 		pw.totalTradingFee = pw.totalTradingFee.Add(tradingFee)
 		return pw.currentTick.Bid.Sub(pw.slippageAbsolute).Sub(tradingFee)
 	default:
-		log.Fatal("unsupported direction", direction)
+		panic(fmt.Sprintf("unsupported direction: %v", direction))
 	}
-
-	// Never reached
-	return decimal.Zero
 }
 
 func (pw *Paperwallet) checkOpenPositionsTarget(position broker.Position) (positionSold bool) {
@@ -245,7 +240,7 @@ func (pw *Paperwallet) checkOpenPositions() {
 func (pw *Paperwallet) CloseAllOpenPositions() {
 	positions, err := pw.GetOpenPositions()
 	if err != nil {
-		log.WithError(err).Error("CloseAllOpenPositions failed")
+		slog.Error("CloseAllOpenPositions failed", "error", err)
 		return
 	}
 	for _, position := range positions {

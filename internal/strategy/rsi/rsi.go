@@ -1,8 +1,9 @@
 package rsi
 
 import (
+	"log/slog"
+
 	"github.com/shopspring/decimal"
-	log "github.com/sirupsen/logrus"
 	"github.com/sklinkert/at/internal/broker"
 	"github.com/sklinkert/at/internal/strategy"
 	"github.com/sklinkert/at/pkg/helper"
@@ -14,7 +15,7 @@ import (
 )
 
 type RSI struct {
-	clog           *log.Entry
+	clog           *slog.Logger
 	instrument     string
 	rsi            *indicatorrsi.RSI
 	sma            *sma.SMA
@@ -34,7 +35,7 @@ const (
 )
 
 func New(instrument string, candleDuration time.Duration) *RSI {
-	clog := log.WithFields(log.Fields{"INSTRUMENT": instrument})
+	clog := slog.With("INSTRUMENT", instrument)
 
 	return &RSI{
 		clog:           clog,
@@ -54,12 +55,12 @@ func (d *RSI) OnWarmUpCandle(closedCandle *ohlc.OHLC) {
 	d.sma.Insert(closedCandle)
 
 	rsiValue, err := d.getRSIValues()
-	log.WithFields(log.Fields{
-		"Start":   closedCandle.Start,
-		"Close":   closedCandle.Close,
-		"RSI":     rsiValue,
-		"RSI_ERR": err,
-	}).Info("Processing warmup candle")
+	slog.Info("Processing warmup candle",
+		"Start", closedCandle.Start,
+		"Close", closedCandle.Close,
+		"RSI", rsiValue,
+		"RSI_ERR", err,
+	)
 }
 
 func (d *RSI) GetWarmUpCandleAmount() uint {
@@ -84,11 +85,11 @@ func (d *RSI) OnCandle(closedCandles []*ohlc.OHLC) (toOpen, toClose []broker.Ord
 	d.sma.Insert(closedCandle)
 
 	rsiValue, err := d.getRSIValues()
-	log.WithFields(log.Fields{
-		"RSI":     rsiValue,
-		"RSI_ERR": err,
-		"Close":   closedCandle.Close,
-	}).Info("Processing Candle")
+	slog.Info("Processing Candle",
+		"RSI", rsiValue,
+		"RSI_ERR", err,
+		"Close", closedCandle.Close,
+	)
 
 	// No night trading
 	//if currentTick.Datetime.Hour() < 10 || currentTick.Datetime.Hour() > 20 {
@@ -179,7 +180,7 @@ func (d *RSI) isRSIShortSignal() bool {
 func (d *RSI) getRSIValues() (rsiValue float64, err error) {
 	rsiValueMap, err := d.rsi.Value()
 	if err != nil {
-		log.WithError(err).Warn("Cannot get value from indicator")
+		slog.Warn("Cannot get value from indicator", "error", err)
 		return 0, err
 	}
 	rsiValue = rsiValueMap[indicatorrsi.Value]
@@ -193,13 +194,13 @@ func (d *RSI) prepareOrder(closedCandle *ohlc.OHLC, direction broker.BuyDirectio
 		stopLossPrice = helper.CalcStopLossPriceByPercentage(closedCandle.Close, helper.FloatToDecimal(stopLossInPercent), direction)
 	)
 
-	d.clog.WithFields(log.Fields{
-		"Direction": direction.String(),
-		"Time":      closedCandle.End,
-		"Close":     closedCandle.Close,
-		"Target":    targetInPercent,
-		"StopLoss":  stopLossPrice,
-	}).Debug("Prepare new order")
+	d.clog.Debug("Prepare new order",
+		"Direction", direction.String(),
+		"Time", closedCandle.End,
+		"Close", closedCandle.Close,
+		"Target", targetInPercent,
+		"StopLoss", stopLossPrice,
+	)
 
 	return broker.NewMarketOrder(direction, size, d.instrument, targetPrice, stopLossPrice)
 }

@@ -4,16 +4,17 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
+	"sort"
+	"sync"
+	"time"
+
 	"github.com/shopspring/decimal"
-	log "github.com/sirupsen/logrus"
 	"github.com/sklinkert/at/internal/broker"
 	"github.com/sklinkert/at/internal/strategy"
 	"github.com/sklinkert/at/pkg/ohlc"
 	"github.com/sklinkert/at/pkg/tick"
 	"gorm.io/gorm"
-	"sort"
-	"sync"
-	"time"
 )
 
 type Trader struct {
@@ -22,7 +23,7 @@ type Trader struct {
 	Instrument                  string
 	TickChan                    chan tick.Tick
 	running                     bool
-	clog                        *log.Entry
+	clog                        *slog.Logger
 	broker                      broker.Broker
 	strategy                    strategy.Strategy
 	persistTickData             bool
@@ -118,15 +119,15 @@ func WithFeedStoredCandles(strategy strategy.Strategy) Option {
 		var limit = int(strategy.GetWarmUpCandleAmount())
 		var candlePeriod = strategy.GetCandleDuration()
 
-		log.Infof("Searching for warmup candles with period %s", candlePeriod)
+		slog.Info(fmt.Sprintf("Searching for warmup candles with period %s", candlePeriod))
 
 		var candles ohlc.OHLCList
 		if err := trader.gormDB.Limit(limit).Order("\"end\" DESC").Where("instrument = ? AND duration = ?", trader.Instrument, candlePeriod).Find(&candles).Error; err != nil {
-			log.WithError(err).Fatal("fetching stored candles failed")
+			panic(fmt.Sprintf("fetching stored candles failed: %v", err))
 		}
 		sort.Sort(candles)
 
-		log.Infof("WithFeedStoredCandles: Sending %d candles to strategy for warming up", len(candles))
+		slog.Info(fmt.Sprintf("WithFeedStoredCandles: Sending %d candles to strategy for warming up", len(candles)))
 		for _, candle := range candles {
 			candle.ForceClose()
 			strategy.OnWarmUpCandle(&candle)
@@ -135,10 +136,10 @@ func WithFeedStoredCandles(strategy strategy.Strategy) Option {
 }
 
 func New(ctx context.Context, instrument, gitRev string, db *gorm.DB, options ...Option) *Trader {
-	var clog = log.WithFields(log.Fields{
-		"INSTRUMENT": instrument,
-		"GIT_REV":    gitRev,
-	})
+	var clog = slog.With(
+		"INSTRUMENT", instrument,
+		"GIT_REV", gitRev,
+	)
 	tr := &Trader{
 		ctx:                       ctx,
 		Instrument:                instrument,
@@ -159,11 +160,11 @@ func New(ctx context.Context, instrument, gitRev string, db *gorm.DB, options ..
 
 	if tr.gormDB == nil {
 		if tr.persistTickData || tr.persistCandleData {
-			log.Fatalf("Persistence of ticks or/and candles requested but no DB given!")
+			panic("Persistence of ticks or/and candles requested but no DB given!")
 		}
 	} else {
 		if err := tr.gormDB.AutoMigrate(&ohlc.OHLC{}, &PerformanceRecord{}, &tick.Tick{}, &broker.Position{}); err != nil {
-			log.WithError(err).Fatal("db.AutoMigrate() failed")
+			panic(fmt.Sprintf("db.AutoMigrate() failed: %v", err))
 		}
 	}
 
@@ -239,14 +240,14 @@ func (tr *Trader) getOpenPositions() ([]broker.Position, error) {
 
 func (tr *Trader) persistTick(t tick.Tick) {
 	if err := tr.gormDB.Create(&t).Error; err != nil {
-		log.WithError(err).Errorf("Cannot persist tick: %+v", t)
+		slog.Error(fmt.Sprintf("Cannot persist tick: %+v", t), "error", err)
 	}
 }
 
 func (tr *Trader) receiveTicks() {
 	var locBerlin, err = time.LoadLocation("Europe/Berlin")
 	if err != nil {
-		log.WithError(err).Fatal("Unable to load Europe/Berlin timezone")
+		panic(fmt.Sprintf("Unable to load Europe/Berlin timezone: %v", err))
 	}
 
 	for currentTick := range tr.TickChan {
@@ -256,7 +257,7 @@ func (tr *Trader) receiveTicks() {
 		currentTick.Datetime = currentTick.Datetime.In(locBerlin)
 
 		if err := currentTick.Validate(); err != nil {
-			tr.clog.WithError(err).Debugf("Invalid tick data received: %+v", currentTick)
+			tr.clog.Debug(fmt.Sprintf("Invalid tick data received: %+v", currentTick), "error", err)
 			continue
 		}
 
@@ -279,10 +280,10 @@ func (tr *Trader) processTick(currentTick tick.Tick) {
 }
 
 func (tr *Trader) processClosedCandle(closedCandle *ohlc.OHLC, currentTick tick.Tick) {
-	tr.clog.Debugf("Processing closed candle: %s", closedCandle)
+	tr.clog.Debug(fmt.Sprintf("Processing closed candle: %s", closedCandle))
 
 	if !closedCandle.HasPriceData() {
-		tr.clog.Debugf("processClosedCandle: candle has missing price data, cannot process further: %s", closedCandle)
+		tr.clog.Debug(fmt.Sprintf("processClosedCandle: candle has missing price data, cannot process further: %s", closedCandle))
 		return
 	}
 
@@ -293,7 +294,7 @@ func (tr *Trader) processClosedCandle(closedCandle *ohlc.OHLC, currentTick tick.
 	// Orders
 	openOrders, err := tr.broker.GetOpenOrders()
 	if err != nil {
-		tr.clog.WithError(err).Error("Cannot get open orders")
+		tr.clog.Error("Cannot get open orders", "error", err)
 		return
 	}
 	tr.strategy.OnOrder(openOrders)
@@ -301,12 +302,12 @@ func (tr *Trader) processClosedCandle(closedCandle *ohlc.OHLC, currentTick tick.
 	// Positions
 	openPositions, err := tr.getOpenPositions()
 	if err != nil {
-		tr.clog.WithError(err).Error("Cannot get open positions")
+		tr.clog.Error("Cannot get open positions", "error", err)
 		return
 	}
 	closedPositions, err := tr.GetClosedPositions()
 	if err != nil {
-		tr.clog.WithError(err).Error("Cannot get closed positions")
+		tr.clog.Error("Cannot get closed positions", "error", err)
 		return
 	}
 	tr.detectClosedPositions(closedPositions)
@@ -327,7 +328,7 @@ func (tr *Trader) processClosedCandle(closedCandle *ohlc.OHLC, currentTick tick.
 func (tr *Trader) processClosableOrders(orders []broker.Order) {
 	for _, order := range orders {
 		if err := tr.broker.CancelOrder(order.ID); err != nil {
-			tr.clog.WithError(err).WithFields(log.Fields{"OrderID": order.ID}).Error("Unable to cancel order")
+			tr.clog.Error("Unable to cancel order", "error", err, "OrderID", order.ID)
 		}
 	}
 }
@@ -344,7 +345,7 @@ func (tr *Trader) processOpenPositions(candle *ohlc.OHLC, openPositions []broker
 func (tr *Trader) processClosablePositions(toClose []broker.Position) {
 	for _, position := range toClose {
 		if err := tr.broker.Sell(position); err != nil {
-			tr.clog.WithError(err).WithFields(log.Fields{"Reference": position.Reference}).Error("Unable to sell position")
+			tr.clog.Error("Unable to sell position", "error", err, "Reference", position.Reference)
 		}
 	}
 }
@@ -356,11 +357,11 @@ func (tr *Trader) processOrders(candle *ohlc.OHLC, currentTick tick.Tick, toOpen
 
 		_, err := tr.broker.Buy(order)
 		if err != nil {
-			tr.clog.WithError(err).Errorf("Unable to open position: %+v", order)
+			tr.clog.Error(fmt.Sprintf("Unable to open position: %+v", order), "error", err)
 			continue
 		}
 
-		tr.clog.Infof("Got new order: %s", order.String())
+		tr.clog.Info(fmt.Sprintf("Got new order: %s", order.String()))
 
 		for _, subscriber := range tr.orderSubscribers {
 			subscriber.OnOrder(order)
@@ -423,7 +424,7 @@ func (tr *Trader) closeCandle(tick tick.Tick, candle *ohlc.OHLC) (newCandle *ohl
 	if tr.gormDB != nil && tr.persistCandleData {
 		go func() {
 			if err := candle.Store(tr.gormDB); err != nil {
-				tr.clog.WithError(err).Errorf("Failed to store OHLC: %+v", candle)
+				tr.clog.Error(fmt.Sprintf("Failed to store OHLC: %+v", candle), "error", err)
 			}
 		}()
 	}

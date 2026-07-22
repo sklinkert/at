@@ -3,8 +3,9 @@ package doji
 import (
 	"errors"
 	"fmt"
+	"log/slog"
+
 	"github.com/shopspring/decimal"
-	log "github.com/sirupsen/logrus"
 	"github.com/sklinkert/at/internal/broker"
 	"github.com/sklinkert/at/internal/strategy"
 	"github.com/sklinkert/at/pkg/helper"
@@ -15,7 +16,7 @@ import (
 )
 
 type Doji struct {
-	clog           *log.Entry
+	clog           *slog.Logger
 	instrument     string
 	volaTracker    *volatility.Volatility
 	openCandle     *ohlc.OHLC
@@ -36,7 +37,7 @@ var targetInPercent = decimal.NewFromFloat(0.045)
 var dec2Pip = helper.Pips2Cent(decimal.NewFromFloat(2))
 
 func New(instrument string) *Doji {
-	clog := log.WithFields(log.Fields{"INSTRUMENT": instrument})
+	clog := slog.With("INSTRUMENT", instrument)
 	trackerMin := int((trackersMinPeriod / ohlcPeriod).Nanoseconds())
 	trackerMax := int((trackersMaxPeriod / ohlcPeriod).Nanoseconds())
 
@@ -162,13 +163,13 @@ func (d *Doji) checkClosedPositions(openOHLC *ohlc.OHLC, currentTick tick.Tick, 
 		if closedPosition.PerformanceInPercentage(decZero, decZero) < 0 {
 			switch closedPosition.BuyDirection {
 			case broker.BuyDirectionLong:
-				log.Infof("Placing counter trade: short")
+				slog.Info("Placing counter trade: short")
 				order, err := d.createOrder(openOHLC, currentTick, targetInPercent, broker.BuyDirectionShort, 1)
 				if err == nil {
 					toOpen = append(toOpen, order)
 				}
 			case broker.BuyDirectionShort:
-				log.Infof("Placing counter trade: long")
+				slog.Info("Placing counter trade: long")
 				order, err := d.createOrder(openOHLC, currentTick, targetInPercent, broker.BuyDirectionLong, 1)
 				if err == nil {
 					toOpen = append(toOpen, order)
@@ -191,17 +192,17 @@ func (d *Doji) createOrder(openOHLC *ohlc.OHLC, currentTick tick.Tick, perfMargi
 		return broker.Order{}, fmt.Errorf("calcStopLossPrice() failed %v", err)
 	}
 
-	d.clog.WithFields(log.Fields{
-		"Direction":       direction.String(),
-		"Time":            currentTick.Datetime,
-		"CurrentTick.Bid": currentTick.Bid,
-		"CurrentTick.Ask": currentTick.Ask,
-		"PerfMargin":      perfMargin,
-		"TargetPrice":     targetPrice,
-		"StopLossPrice":   stopLossPrice,
-		"OHLC.Age":        openOHLC.Age(currentTick.Datetime).String(),
+	d.clog.Debug("Creating new order",
+		"Direction", direction.String(),
+		"Time", currentTick.Datetime,
+		"CurrentTick.Bid", currentTick.Bid,
+		"CurrentTick.Ask", currentTick.Ask,
+		"PerfMargin", perfMargin,
+		"TargetPrice", targetPrice,
+		"StopLossPrice", stopLossPrice,
+		"OHLC.Age", openOHLC.Age(currentTick.Datetime).String(),
 		//"Today.Perf":      d.today.PerformanceInPercentage().Round(2),
-	}).Debug("Creating new order")
+	)
 
 	return broker.NewMarketOrder(direction, size, openOHLC.Instrument, targetPrice, stopLossPrice), nil
 }

@@ -3,12 +3,13 @@ package trader
 import (
 	"errors"
 	"fmt"
+	"log/slog"
+	"time"
+
 	"github.com/shopspring/decimal"
-	log "github.com/sirupsen/logrus"
 	"github.com/sklinkert/at/internal/broker"
 	"github.com/sklinkert/at/pkg/helper"
 	"gorm.io/gorm"
-	"time"
 )
 
 type PerformanceRecord struct {
@@ -204,8 +205,7 @@ func (tr *Trader) totalPerfInPips(closedPositions []broker.Position) decimal.Dec
 func (tr *Trader) GetPerformanceRecord(chartHTML string) (*PerformanceRecord, error) {
 	closedPositions, err := tr.GetClosedPositions()
 	if err != nil {
-		log.WithError(err).Fatal("unable to get closed positions")
-		return nil, err
+		return nil, fmt.Errorf("unable to get closed positions: %w", err)
 	}
 
 	if len(closedPositions) == 0 {
@@ -271,25 +271,25 @@ func (tr *Trader) totalExposureInPercent(totalTimeInMarket time.Duration, firstP
 func (tr *Trader) Summary() {
 	pr, err := tr.GetPerformanceRecord("")
 	if err != nil {
-		log.WithError(err).Error("Cannot get performance record")
+		slog.Error("Cannot get performance record", "error", err)
 		return
 	}
 
-	log.Infof("%25s: %s", "Instrument", pr.Instrument)
-	log.Infof("%25s: %s", "Strategy", pr.Strategy)
-	log.Infof("%25s: %s", "Candle duration", pr.CandleDuration)
-	log.Infof("%25s: %s -> %s", "Period", pr.FirstTrade.Format("02.01.2006"), pr.LastTrade.Format("02.01.2006"))
-	log.Infof("%25s: %d (%d long, %d short)", "Total positions", pr.Trades, pr.TradesLong, pr.TradesShort)
-	log.Infof("%25s: %s (%.2f%%)", "Total time in market", pr.TotalTimeInMarket, pr.TotalExposureInPercent)
-	log.Infof("%25s: %s", "AVG time in market", pr.AVGTimeInMarket)
-	log.Infof("%25s: %d (%.2f%%)", "Profit positions", pr.TradesWin, pr.TradesWinRationInPercent)
-	log.Infof("%25s: %d", "Loss positions", pr.TradesLoss)
-	log.Infof("%25s: %d", "Loss positions long", pr.TradesLossLong)
-	log.Infof("%25s: %d", "Loss positions short", pr.TradesLossShort)
-	log.Infof("%25s: %.2f%% %.2f (%.2f pips)", "Max win", pr.MaxWinInPercent, pr.MaxWinInPips/pipsFactor, pr.MaxWinInPips)
-	log.Infof("%25s: %.2f%% %.2f (%.2f pips)", "Max loss", pr.MaxLossInPercent, pr.MaxLossInPips/pipsFactor, pr.MaxLossInPips)
-	log.Infof("%25s: %.2f (%.2f pips)", "Total performance", pr.TotalPerformanceInPips/pipsFactor, pr.TotalPerformanceInPips)
-	log.Infof("%25s: %.2f (%.2f pips)", "AVG Performance", pr.AVGPerformanceInPips/pipsFactor, pr.AVGPerformanceInPips)
+	slog.Info(fmt.Sprintf("%25s: %s", "Instrument", pr.Instrument))
+	slog.Info(fmt.Sprintf("%25s: %s", "Strategy", pr.Strategy))
+	slog.Info(fmt.Sprintf("%25s: %s", "Candle duration", pr.CandleDuration))
+	slog.Info(fmt.Sprintf("%25s: %s -> %s", "Period", pr.FirstTrade.Format("02.01.2006"), pr.LastTrade.Format("02.01.2006")))
+	slog.Info(fmt.Sprintf("%25s: %d (%d long, %d short)", "Total positions", pr.Trades, pr.TradesLong, pr.TradesShort))
+	slog.Info(fmt.Sprintf("%25s: %s (%.2f%%)", "Total time in market", pr.TotalTimeInMarket, pr.TotalExposureInPercent))
+	slog.Info(fmt.Sprintf("%25s: %s", "AVG time in market", pr.AVGTimeInMarket))
+	slog.Info(fmt.Sprintf("%25s: %d (%.2f%%)", "Profit positions", pr.TradesWin, pr.TradesWinRationInPercent))
+	slog.Info(fmt.Sprintf("%25s: %d", "Loss positions", pr.TradesLoss))
+	slog.Info(fmt.Sprintf("%25s: %d", "Loss positions long", pr.TradesLossLong))
+	slog.Info(fmt.Sprintf("%25s: %d", "Loss positions short", pr.TradesLossShort))
+	slog.Info(fmt.Sprintf("%25s: %.2f%% %.2f (%.2f pips)", "Max win", pr.MaxWinInPercent, pr.MaxWinInPips/pipsFactor, pr.MaxWinInPips))
+	slog.Info(fmt.Sprintf("%25s: %.2f%% %.2f (%.2f pips)", "Max loss", pr.MaxLossInPercent, pr.MaxLossInPips/pipsFactor, pr.MaxLossInPips))
+	slog.Info(fmt.Sprintf("%25s: %.2f (%.2f pips)", "Total performance", pr.TotalPerformanceInPips/pipsFactor, pr.TotalPerformanceInPips))
+	slog.Info(fmt.Sprintf("%25s: %.2f (%.2f pips)", "AVG Performance", pr.AVGPerformanceInPips/pipsFactor, pr.AVGPerformanceInPips))
 }
 
 func (tr *Trader) SavePerformanceRecord(chartHTML string) error {
@@ -299,13 +299,13 @@ func (tr *Trader) SavePerformanceRecord(chartHTML string) error {
 	}
 
 	if err := tr.gormDB.Create(&performanceRecord).Error; err != nil {
-		log.WithError(err).Fatal("Cannot save PerformanceRecord to DB")
+		return fmt.Errorf("cannot save PerformanceRecord to DB: %w", err)
 	}
 
 	for _, pos := range performanceRecord.ClosedPositions {
 		pos.PerformanceRecordID = performanceRecord.ID
 		if err := tr.gormDB.Create(&pos).Error; err != nil {
-			log.WithError(err).Error("Cannot save closed position to DB")
+			slog.Error("Cannot save closed position to DB", "error", err)
 		}
 	}
 	return nil

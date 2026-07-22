@@ -1,18 +1,18 @@
 package stochrsi
 
 import (
-	log "github.com/sirupsen/logrus"
 	"github.com/sklinkert/at/internal/broker"
 	"github.com/sklinkert/at/internal/strategy"
 	"github.com/sklinkert/at/pkg/helper"
 	"github.com/sklinkert/at/pkg/indicator/stochrsi"
 	"github.com/sklinkert/at/pkg/ohlc"
 	"github.com/sklinkert/at/pkg/tick"
+	"log/slog"
 	"time"
 )
 
 type RSI struct {
-	clog          *log.Entry
+	clog          *slog.Logger
 	instrument    string
 	rsi           *stochrsi.StochRSI
 	openPositions []broker.Position
@@ -28,7 +28,7 @@ const (
 )
 
 func New(instrument string) *RSI {
-	clog := log.WithFields(log.Fields{"INSTRUMENT": instrument})
+	clog := slog.With("INSTRUMENT", instrument)
 
 	return &RSI{
 		clog:       clog,
@@ -74,7 +74,7 @@ func (d *RSI) OnCandle(closedCandles []*ohlc.OHLC) (toOpen, toClose []broker.Ord
 
 	rsiValueMap, err := d.rsi.Value()
 	if err != nil {
-		log.WithError(err).Debug("Cannot get value from indicator")
+		slog.Debug("Cannot get value from indicator", "error", err)
 		return
 	}
 	kValue := rsiValueMap[stochrsi.ValueK]
@@ -99,13 +99,13 @@ func (d *RSI) prepareOrder(closedCandle *ohlc.OHLC, direction broker.BuyDirectio
 		stopLossPrice = helper.CalcStopLossPriceByPercentage(closedCandle.Close, helper.FloatToDecimal(stopLossInPercent), direction)
 	)
 
-	d.clog.WithFields(log.Fields{
-		"Direction": direction.String(),
-		"Time":      closedCandle.End,
-		"Close":     closedCandle.Close,
-		"Target":    targetInPercent,
-		"StopLoss":  stopLossPrice,
-	}).Debug("Prepare new order")
+	d.clog.Debug("Prepare new order",
+		"Direction", direction.String(),
+		"Time", closedCandle.End,
+		"Close", closedCandle.Close,
+		"Target", targetInPercent,
+		"StopLoss", stopLossPrice,
+	)
 
 	return broker.NewMarketOrder(direction, size, d.instrument, targetPrice, stopLossPrice)
 }

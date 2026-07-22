@@ -3,11 +3,11 @@ package scalper
 import (
 	"fmt"
 	"github.com/shopspring/decimal"
-	log "github.com/sirupsen/logrus"
 	"github.com/sklinkert/at/internal/broker"
 	"github.com/sklinkert/at/internal/strategy"
 	"github.com/sklinkert/at/pkg/ohlc"
 	"github.com/sklinkert/at/pkg/tick"
+	"log/slog"
 	"time"
 )
 
@@ -15,7 +15,7 @@ import (
 // Entry: Do counter trade after a number of candles were in the same buy direction
 
 type scalper struct {
-	clog          *log.Entry
+	clog          *slog.Logger
 	openPositions []broker.Position
 	openOrders    []broker.Order
 	currentTick   tick.Tick
@@ -27,7 +27,7 @@ var (
 )
 
 func New(instrument string) *scalper {
-	clog := log.WithFields(log.Fields{"INSTRUMENT": instrument})
+	clog := slog.With("INSTRUMENT", instrument)
 
 	mr := &scalper{
 		clog: clog,
@@ -82,7 +82,7 @@ func (mr *scalper) OnCandle(closedCandles []*ohlc.OHLC) (toOpen, toClose []broke
 
 	newOrder, err := mr.createOrder(closedCandle, buyDirection, 1, "scalper")
 	if err != nil {
-		log.WithError(err).Errorf("createOrder() failed")
+		slog.Error("createOrder() failed", "error", err)
 		return
 	}
 	toOpen = append(toOpen, newOrder)
@@ -109,15 +109,15 @@ func (mr *scalper) createOrder(openOHLC *ohlc.OHLC, direction broker.BuyDirectio
 		return broker.Order{}, fmt.Errorf("calcStopLossPrice() failed %v", err)
 	}
 
-	mr.clog.WithFields(log.Fields{
-		"Direction":       direction.String(),
-		"Time":            mr.currentTick.Datetime,
-		"CurrentTick.Bid": mr.currentTick.Bid,
-		"CurrentTick.Ask": mr.currentTick.Ask,
-		"TargetPrice":     targetPrice,
-		"StopLossPrice":   stopLossPrice,
-		"OHLC.Age":        openOHLC.Age(mr.currentTick.Datetime).String(),
-	}).Debug("Creating new order")
+	mr.clog.Debug("Creating new order",
+		"Direction", direction.String(),
+		"Time", mr.currentTick.Datetime,
+		"CurrentTick.Bid", mr.currentTick.Bid,
+		"CurrentTick.Ask", mr.currentTick.Ask,
+		"TargetPrice", targetPrice,
+		"StopLossPrice", stopLossPrice,
+		"OHLC.Age", openOHLC.Age(mr.currentTick.Datetime).String(),
+	)
 
 	return broker.NewMarketOrder(direction, size, openOHLC.Instrument, targetPrice, stopLossPrice), nil
 }

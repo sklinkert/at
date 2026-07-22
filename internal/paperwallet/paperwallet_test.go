@@ -33,8 +33,8 @@ func TestBuyAndSellLong(t *testing.T) {
 
 	pos := positions[0]
 	assert.True(t, broker.BuyDirectionLong == pos.BuyDirection)
-	assert.True(t, now == pos.BuyTime)
-	assert.True(t, pos.SellPrice.Equals(decimal.NewFromFloat(0)))
+	assert.True(t, now.Equal(pos.BuyTime))
+	assert.True(t, pos.SellPrice.Equal(decimal.NewFromFloat(0)))
 
 	// Sell position
 	bid = decimal.NewFromFloat(2.0)
@@ -58,7 +58,7 @@ func TestBuyAndSellLong(t *testing.T) {
 
 	perfPercent := pos.PerformanceInPercentage(decimal.NewFromFloat(0), decimal.NewFromFloat(0)) // must take SellPrice instead of given currentPrice
 	assert.EqualFloat64(t, 100, perfPercent)
-	assert.True(t, now == pos.SellTime)
+	assert.True(t, now.Equal(pos.SellTime))
 }
 
 func TestLimitOrderLong(t *testing.T) {
@@ -90,7 +90,7 @@ func TestLimitOrderLong(t *testing.T) {
 	assert.NoError(t.Fatalf, err)
 	assert.EqualInt(t.Fatalf, 1, len(positions))
 	pos := positions[0]
-	assert.True(t, pos.BuyPrice.Equals(ask))
+	assert.True(t, pos.BuyPrice.Equal(ask))
 	assert.EqualFloat64(t, size, pos.Size)
 	assert.True(t, broker.BuyDirectionLong == pos.BuyDirection)
 }
@@ -124,7 +124,7 @@ func TestLimitOrderShort(t *testing.T) {
 	assert.NoError(t.Fatalf, err)
 	assert.EqualInt(t.Fatalf, 1, len(positions))
 	pos := positions[0]
-	assert.True(t, pos.BuyPrice.Equals(bid))
+	assert.True(t, pos.BuyPrice.Equal(bid))
 	assert.EqualFloat64(t, size, pos.Size)
 	assert.True(t, broker.BuyDirectionShort == pos.BuyDirection)
 }
@@ -152,8 +152,8 @@ func TestBuyAndSellShort(t *testing.T) {
 
 	pos := positions[0]
 	assert.True(t, broker.BuyDirectionShort == pos.BuyDirection)
-	assert.True(t, now == pos.BuyTime)
-	assert.True(t, pos.SellPrice.Equals(decimal.NewFromFloat(0)))
+	assert.True(t, now.Equal(pos.BuyTime))
+	assert.True(t, pos.SellPrice.Equal(decimal.NewFromFloat(0)))
 
 	// Sell position
 	bid = decimal.NewFromFloat(1.77)
@@ -177,7 +177,7 @@ func TestBuyAndSellShort(t *testing.T) {
 
 	perfPercent := pos.PerformanceInPercentage(decimal.NewFromFloat(0), decimal.NewFromFloat(0)) // must take SellPrice instead of given currentPrice
 	assert.EqualFloat64(t, 100, perfPercent)
-	assert.True(t, now == pos.SellTime)
+	assert.True(t, now.Equal(pos.SellTime))
 }
 
 func TestBacktest_GetOpenPositions(t *testing.T) {

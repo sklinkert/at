@@ -4,14 +4,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/shopspring/decimal"
-	log "github.com/sirupsen/logrus"
-	"github.com/sklinkert/at/internal/broker"
-	"github.com/sklinkert/at/pkg/tick"
-	"github.com/sklinkert/igmarkets"
+	"log/slog"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/shopspring/decimal"
+	"github.com/sklinkert/at/internal/broker"
+	"github.com/sklinkert/at/pkg/tick"
+	"github.com/sklinkert/igmarkets"
 )
 
 const openPositionsRefreshInterval = time.Second * 5
@@ -40,7 +41,7 @@ func New(instrument string, apiURL, apiKey, accountID, identifier, password stri
 
 	locBerlin, err := time.LoadLocation("Europe/Berlin")
 	if err != nil {
-		log.WithError(err).Fatal("cannot load time zone")
+		return nil, fmt.Errorf("cannot load time zone: %w", err)
 	}
 
 	b := &Broker{
@@ -89,14 +90,14 @@ func (b *Broker) refreshIGToken() {
 		if !areMarketsOpen(now) {
 			continue
 		}
-		log.Debug("Refreshing IG token")
+		slog.Debug("Refreshing IG token")
 
 		b.Lock()
 		if err := b.igHandle.Login(context.Background()); err != nil {
-			log.WithError(err).WithFields(log.Fields{"Failures": b.tokenRefreshFailures}).Error("Failed to refresh IG token")
+			slog.Error("Failed to refresh IG token", "error", err, "Failures", b.tokenRefreshFailures)
 			b.tokenRefreshFailures++
 			if b.tokenRefreshFailures > maxTokenRefreshFailures {
-				log.Fatal("too many failures for IG token refresh")
+				panic("too many failures for IG token refresh")
 			}
 		}
 		b.tokenRefreshFailures = 0
@@ -130,14 +131,14 @@ func (b *Broker) BuyMarket(order broker.Order) (string, broker.Position, error) 
 	defer b.Unlock()
 
 	igDirection := toDirection(order.Direction)
-	clog := log.WithFields(log.Fields{
-		"Instrument":    order.Instrument,
-		"Size":          order.Size,
-		"TargetPrice":   order.TargetPrice.String(),
-		"StopLossPrice": order.StopLossPrice.String(),
-		"CurrencyCode":  order.CurrencyCode,
-		"Direction":     igDirection,
-	})
+	clog := slog.With(
+		"Instrument", order.Instrument,
+		"Size", order.Size,
+		"TargetPrice", order.TargetPrice.String(),
+		"StopLossPrice", order.StopLossPrice.String(),
+		"CurrencyCode", order.CurrencyCode,
+		"Direction", igDirection,
+	)
 
 	targetStr := ""
 	if order.HasTargetPrice() {
@@ -164,17 +165,17 @@ func (b *Broker) BuyMarket(order broker.Order) (string, broker.Position, error) 
 	//	igOrder.TrailingStop = true
 	//}
 
-	clog.Debugf("New order: %v", order)
+	clog.Debug(fmt.Sprintf("New order: %v", order))
 
 	now := time.Now()
 	dealRef, err := b.igHandle.PlaceOTCOrder(context.Background(), igOrder)
 	if err != nil {
-		clog.WithError(err).Error("Unable to place order")
+		clog.Error("Unable to place order", "error", err)
 		return "", broker.Position{}, err
 	}
 
-	clog = clog.WithFields(log.Fields{"Reference": dealRef})
-	clog.Infof("New order placed successfully. Took %s", time.Since(now))
+	clog = clog.With("Reference", dealRef)
+	clog.Info(fmt.Sprintf("New order placed successfully. Took %s", time.Since(now)))
 
 	time.Sleep(1 * time.Second)
 
@@ -184,9 +185,9 @@ func (b *Broker) BuyMarket(order broker.Order) (string, broker.Position, error) 
 		attempts++
 		confirmation, err = b.igHandle.GetDealConfirmation(context.Background(), dealRef.DealReference)
 		if err != nil {
-			clog.WithError(err).Error("Error while getting deal confirmation for")
+			clog.Error("Error while getting deal confirmation for", "error", err)
 			if attempts >= 100 {
-				clog.Error("too many failures for b.igHandle.GetDealConfirmation(dealRef)", dealRef)
+				clog.Error("too many failures for b.igHandle.GetDealConfirmation(dealRef)", "dealRef", dealRef)
 			}
 			time.Sleep(1 * time.Second)
 			continue
@@ -195,7 +196,7 @@ func (b *Broker) BuyMarket(order broker.Order) (string, broker.Position, error) 
 	}
 
 	if confirmation.Status != "OPEN" {
-		clog.WithFields(log.Fields{"Status": confirmation.Status}).Errorf("Unexpected order status: %+v", confirmation)
+		clog.Error(fmt.Sprintf("Unexpected order status: %+v", confirmation), "Status", confirmation.Status)
 		return "", broker.Position{}, fmt.Errorf("unexpected order status %q", confirmation.Status)
 	}
 
@@ -220,9 +221,7 @@ func toInternalReference(dealID, dealReference string) string {
 func fromInternalReference(position broker.Position) (dealID, dealReference string) {
 	s := strings.Split(position.Reference, ":")
 	if len(s) != 2 {
-		log.WithFields(log.Fields{
-			"position.Reference": position.Reference,
-		}).Fatalf("Malformed internal reference")
+		panic(fmt.Sprintf("Malformed internal reference: %q", position.Reference))
 	}
 	return s[0], s[1]
 }
@@ -231,9 +230,7 @@ func (b *Broker) Sell(position broker.Position) error {
 	b.Lock()
 	defer b.Unlock()
 
-	clog := log.WithFields(log.Fields{
-		"Reference": position.Reference,
-	})
+	clog := slog.With("Reference", position.Reference)
 	clog.Info("Sell called")
 
 	var closeDirection broker.BuyDirection
@@ -257,24 +254,24 @@ func (b *Broker) Sell(position broker.Position) error {
 
 	dealRef, err := b.igHandle.CloseOTCPosition(context.Background(), closeReq)
 	if err != nil {
-		clog.WithError(err).Error("Unable to close position")
+		clog.Error("Unable to close position", "error", err)
 		return err
 	}
 
 	confirmation, err := b.igHandle.GetDealConfirmation(context.Background(), dealRef.DealReference)
 	if err != nil {
-		clog.WithError(err).Error("Cannot get deal confirmation")
+		clog.Error("Cannot get deal confirmation", "error", err)
 		return err
 	}
 
-	clog.WithFields(log.Fields{
-		"DealRef":    dealRef.DealReference,
-		"DealStatus": confirmation.DealStatus,
-		"Profit":     confirmation.Profit,
-		"Currency":   confirmation.ProfitCurrency,
-		"Reason":     confirmation.Reason,
-		"Level":      confirmation.Level,
-	}).Info("Deal confirmed")
+	clog.Info("Deal confirmed",
+		"DealRef", dealRef.DealReference,
+		"DealStatus", confirmation.DealStatus,
+		"Profit", confirmation.Profit,
+		"Currency", confirmation.ProfitCurrency,
+		"Reason", confirmation.Reason,
+		"Level", confirmation.Level,
+	)
 
 	// Invalidate cache
 	b.openPositionsLastChecked = time.Time{}
@@ -429,7 +426,7 @@ func (b *Broker) ListenToPriceFeed(tickChan chan tick.Tick) {
 		err := b.igHandle.OpenLightStreamerSubscription(context.Background(), []string{b.instrument}, lightStreamReceiver)
 		b.Unlock()
 		if err != nil {
-			log.WithError(err).Error("OpenLightStreamerSubscription() failed")
+			slog.Error("OpenLightStreamerSubscription() failed", "error", err)
 			continue
 		}
 
@@ -438,12 +435,12 @@ func (b *Broker) ListenToPriceFeed(tickChan chan tick.Tick) {
 			if market.Epic != b.instrument {
 				continue
 			}
-			log.Debugf("Tick: %+v", market)
+			slog.Debug(fmt.Sprintf("Tick: %+v", market))
 
 			// Price is too old
 			if time.Since(market.Time) > maxTimeDelta {
-				log.Errorf("Time delta too big: nowUTC %s received %s epic %s",
-					time.Now().UTC().String(), market.Time.String(), market.Epic)
+				slog.Error(fmt.Sprintf("Time delta too big: nowUTC %s received %s epic %s",
+					time.Now().UTC().String(), market.Time.String(), market.Epic))
 				continue
 			}
 
@@ -451,8 +448,8 @@ func (b *Broker) ListenToPriceFeed(tickChan chan tick.Tick) {
 			nowUTC := time.Now().UTC()
 			marketTimeUTC := market.Time.UTC()
 			if marketTimeUTC.After(nowUTC.Add(maxTimeDelta)) {
-				log.Errorf("price date %s is too far in future, skipping (nowUTC: %s)",
-					marketTimeUTC, nowUTC)
+				slog.Error(fmt.Sprintf("price date %s is too far in future, skipping (nowUTC: %s)",
+					marketTimeUTC, nowUTC))
 				continue
 			}
 

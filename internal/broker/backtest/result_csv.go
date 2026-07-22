@@ -3,27 +3,34 @@ package backtest
 import (
 	"encoding/csv"
 	"fmt"
-	"github.com/shopspring/decimal"
-	log "github.com/sirupsen/logrus"
-	"github.com/sklinkert/at/internal/broker"
-	"github.com/sklinkert/at/pkg/helper"
+	"log/slog"
 	"os"
 	"time"
+
+	"github.com/shopspring/decimal"
+	"github.com/sklinkert/at/internal/broker"
+	"github.com/sklinkert/at/pkg/helper"
 )
 
 func (b *Backtest) writeCSV() {
 	b.RLock()
 	defer b.RUnlock()
 
-	file, err := os.Create("./results/backtesting_result.csv")
+	const resultsDir = "./results"
+	if err := os.MkdirAll(resultsDir, 0o755); err != nil {
+		slog.Error("creating results directory failed", "error", err)
+		return
+	}
+
+	file, err := os.Create(resultsDir + "/backtesting_result.csv")
 	if err != nil {
-		log.WithError(err).Error("creating CSV file failed")
+		slog.Error("creating CSV file failed", "error", err)
 		return
 	}
 	defer func(file *os.File) {
 		err := file.Close()
 		if err != nil {
-			log.WithError(err).Warn("file.Close() failed")
+			slog.Warn("file.Close() failed", "error", err)
 		}
 	}(file)
 
@@ -53,7 +60,7 @@ func (b *Backtest) writeCSV() {
 		"GapToSMA",
 	}
 	if err := writer.Write(header); err != nil {
-		log.WithError(err).Fatal("cannot write to file")
+		panic(fmt.Sprintf("cannot write to file: %v", err))
 	}
 
 	closedPositions, _ := b.GetClosedPositions()
@@ -68,7 +75,7 @@ func csvPrintPosition(writer *csv.Writer, positions []broker.Position) {
 
 	locBerlin, err := time.LoadLocation("Europe/Berlin")
 	if err != nil {
-		log.WithError(err).Fatal("cannot load time zone")
+		panic(fmt.Sprintf("cannot load time zone: %v", err))
 	}
 
 	for i, position := range positions {
@@ -106,7 +113,7 @@ func csvPrintPosition(writer *csv.Writer, positions []broker.Position) {
 			position.GapToSMA.Round(5).String(),
 		}
 		if err := writer.Write(record); err != nil {
-			log.WithError(err).Fatal("cannot write to file")
+			panic(fmt.Sprintf("cannot write to file: %v", err))
 		}
 	}
 }

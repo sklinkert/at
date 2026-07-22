@@ -8,13 +8,13 @@ import (
 )
 
 func TestCent2Pips(t *testing.T) {
-	if !Cent2Pips(decimal.NewFromFloat(0.001)).Equals(decimal.NewFromFloat(10)) {
+	if !Cent2Pips(decimal.NewFromFloat(0.001)).Equal(decimal.NewFromFloat(10)) {
 		t.Errorf("Cent2Pips does not work properly")
 	}
 }
 
 func TestPips2Cent(t *testing.T) {
-	if !Pips2Cent(decimal.NewFromFloat(10)).Equals(decimal.NewFromFloat(0.001)) {
+	if !Pips2Cent(decimal.NewFromFloat(10)).Equal(decimal.NewFromFloat(0.001)) {
 		t.Errorf("Pips2Cent does not work properly")
 	}
 }
@@ -64,5 +64,5 @@ func TestDecimalToFloat(t *testing.T) {
 func TestFloatToDecimal(t *testing.T) {
 	n := 10.34
 	want := decimal.NewFromFloat(n)
-	assert.True(t, want.Equals(FloatToDecimal(n)))
+	assert.True(t, want.Equal(FloatToDecimal(n)))
 }

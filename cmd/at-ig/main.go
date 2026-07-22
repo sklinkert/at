@@ -3,8 +3,11 @@ package main
 import (
 	"context"
 	"fmt"
+	"log/slog"
+	"os"
+	"time"
+
 	"github.com/lfritz/env"
-	log "github.com/sirupsen/logrus"
 	"github.com/sklinkert/at/internal/broker/ig"
 	"github.com/sklinkert/at/internal/strategy"
 	heikinashi "github.com/sklinkert/at/internal/strategy/HeikinAshi"
@@ -21,8 +24,12 @@ import (
 	"gorm.io/driver/postgres"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
-	"time"
 )
+
+func fatal(msg string, err error) {
+	slog.Error(msg, "error", err)
+	os.Exit(1)
+}
 
 // Example setup for IG.com broker
 
@@ -64,16 +71,19 @@ func mustConnectDB() *gorm.DB {
 		db, err = gorm.Open(postgres.Open(dsn), &gorm.Config{})
 	}
 	if err != nil {
-		log.WithError(err).Fatal("failed to connect database")
+		fatal("failed to connect database", err)
 	}
 	if err := db.AutoMigrate(&tick.Tick{}, &ohlc.OHLC{}, &trader.PerformanceRecord{}); err != nil {
-		log.WithError(err).Fatal("db.AutoMigrate() failed")
+		fatal("db.AutoMigrate() failed", err)
 	}
 	return db
 }
 
 func main() {
 	var ctx = context.Background()
+
+	lvl := new(slog.LevelVar)
+	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: lvl})))
 
 	var err error
 	var e = env.New()
@@ -84,7 +94,7 @@ func main() {
 	e.OptionalString("INSTRUMENT", &conf.instrument, "CS.D.EURUSD.MINI.IP", "instrument to trade")
 	e.OptionalString("CURRENCY_CODE", &conf.currencyCode, "EUR", "Currency code")
 	e.OptionalString("BROKER", &conf.broker, "none", "Broker backend")
-	e.OptionalString("STRATEGY", &conf.strategyName, "meanreversion", "strategy to be executed")
+	e.OptionalString("STRATEGY", &conf.strategyName, strategy.NameRSI, "strategy to be executed")
 	e.OptionalString("CANDLE_DURATION", &conf.candleDuration, "60m", "Duration for OHLC candle")
 	e.OptionalString("IG_API_URL", &conf.igAPIURL, igmarkets.DemoAPIURL, "IG API URL")
 	e.OptionalString("IG_IDENTIFIER", &conf.igIdentifier, "", "IG Identifier")
@@ -99,18 +109,19 @@ func main() {
 	e.OptionalInt("YEAR_FROM", &conf.yearFrom, 1970, "Backtesting beginning")
 	e.OptionalInt("YEAR_TO", &conf.yearTo, 2022, "Backtesting end")
 	if err := e.Load(); err != nil {
-		log.WithError(err).Fatal("env loading failed")
+		fatal("env loading failed", err)
 	}
 	if conf.debug {
-		log.SetLevel(log.DebugLevel)
+		lvl.Set(slog.LevelDebug)
 	}
 	if GitRev == "" {
-		log.Fatal("GitRev not set")
+		slog.Error("GitRev not set")
+		os.Exit(1)
 	}
 
 	candleDuration, err := time.ParseDuration(conf.candleDuration)
 	if err != nil {
-		log.WithError(err).Fatal("cannot parse candle duration")
+		fatal("cannot parse candle duration", err)
 	}
 
 	var strategyBackend strategy.Strategy
@@ -130,15 +141,16 @@ func main() {
 	case strategy.NameRSIADX:
 		strategyBackend = rsiadx.New(conf.instrument, candleDuration)
 	default:
-		log.Fatalf("unsupported strategy %q", conf.strategyName)
+		slog.Error("unsupported strategy", "strategy", conf.strategyName)
+		os.Exit(1)
 	}
 
-	log.Info("Starting broker ", conf.broker)
+	slog.Info("Starting broker " + conf.broker)
 
 	brokerBackend, err := ig.New(conf.instrument, conf.igAPIURL, conf.igAPIKey, conf.igAccountID,
 		conf.igIdentifier, conf.igPassword)
 	if err != nil {
-		log.WithError(err).Fatal("ig.New() failed")
+		fatal("ig.New() failed", err)
 	}
 
 	db := mustConnectDB()
@@ -151,7 +163,7 @@ func main() {
 		trader.WithCurrencyCode(conf.currencyCode),
 	)
 	if err := tr.Start(); err != nil {
-		log.WithError(err).Fatal("failed to start trader")
+		fatal("failed to start trader", err)
 	}
 	tr.Summary()
 }

@@ -1,11 +1,12 @@
 package eo
 
 import (
+	"fmt"
+	"sort"
+
 	ring "github.com/falzm/golang-ring"
-	log "github.com/sirupsen/logrus"
 	"github.com/sklinkert/at/pkg/helper"
 	"github.com/sklinkert/at/pkg/ohlc"
-	"sort"
 )
 
 // Environment Overlays
@@ -91,7 +92,6 @@ func (eo *EnvironmentOverlay) RSI() (upperThreshold, lowerThreshold float64) {
 	case RExtreme:
 		return 95, 5
 	default:
-		log.Panicf("Unsupported risk level %d", int(riskLevel))
-		return 100, 0
+		panic(fmt.Sprintf("Unsupported risk level %d", int(riskLevel)))
 	}
 }

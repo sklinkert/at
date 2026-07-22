@@ -1,12 +1,13 @@
 package backtest
 
 import (
+	"fmt"
+	"log/slog"
+	"time"
+
 	"github.com/preichenberger/go-coinbasepro/v2"
 	"github.com/shopspring/decimal"
-	log "github.com/sirupsen/logrus"
 	"github.com/sklinkert/at/pkg/ohlc"
-	"strings"
-	"time"
 )
 
 type Candlestick struct {
@@ -21,11 +22,6 @@ type Candlestick struct {
 	CloseTime time.Time
 }
 
-func (b *Backtest) splitInstrument() (exchange, isin string) {
-	var parts = strings.Split(b.instrument, ".")
-	return parts[0], parts[1]
-}
-
 func (b *Backtest) retrieveCandlesFromCoinbase(receiver chan ohlc.OHLC) {
 	defer close(receiver)
 
@@ -37,7 +33,7 @@ func (b *Backtest) retrieveCandlesFromCoinbase(receiver chan ohlc.OHLC) {
 	}
 	historicRates, err := client.GetHistoricRates(b.instrument, params)
 	if err != nil {
-		log.WithError(err).Fatalf("cannot fetch historic rates from coinbase (params: %+v)", params)
+		panic(fmt.Sprintf("cannot fetch historic rates from coinbase (params: %+v): %v", params, err))
 	}
 
 	for _, historicRate := range historicRates {
@@ -56,5 +52,5 @@ func (b *Backtest) retrieveCandlesFromCoinbase(receiver chan ohlc.OHLC) {
 		receiver <- *candle
 	}
 
-	log.Infof("Processed %d candles", len(historicRates))
+	slog.Info(fmt.Sprintf("Processed %d candles", len(historicRates)))
 }

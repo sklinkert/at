@@ -1,12 +1,14 @@
 package coinbase
 
 import (
+	"fmt"
+	"log/slog"
+	"time"
+
 	ws "github.com/gorilla/websocket"
 	"github.com/preichenberger/go-coinbasepro/v2"
 	"github.com/shopspring/decimal"
-	log "github.com/sirupsen/logrus"
 	"github.com/sklinkert/at/pkg/tick"
-	"time"
 )
 
 func (cb *Coinbase) getInstrumentMessages() []coinbasepro.MessageChannel {
@@ -65,15 +67,15 @@ func (cb *Coinbase) ListenToPriceFeed(tickChan chan tick.Tick) {
 			if retryDelay > maxRetryDelay {
 				retryDelay = maxRetryDelay
 			}
-			log.WithError(err).Errorf("OpenLightStreamerSubscription() failed. Retry in %s", retryDelay)
+			slog.Error(fmt.Sprintf("OpenLightStreamerSubscription() failed. Retry in %s", retryDelay), "error", err)
 			continue
 		}
 
-		log.Infof("Connected to websocket for instruments %+v", cb.instruments)
+		slog.Info(fmt.Sprintf("Connected to websocket for instruments %+v", cb.instruments))
 		retryDelay = defaultRetryDelay
 
 		const messageType = "ticker"
-		for true {
+		for {
 			message := coinbasepro.Message{}
 			if err := wsConn.ReadJSON(&message); err != nil {
 				println(err.Error())
@@ -83,7 +85,7 @@ func (cb *Coinbase) ListenToPriceFeed(tickChan chan tick.Tick) {
 				continue
 			}
 
-			log.Debugf("Tick: %+v", message)
+			slog.Debug(fmt.Sprintf("Tick: %+v", message))
 
 			bid, err := decimal.NewFromString(message.BestBid)
 			if err != nil {
@@ -96,7 +98,7 @@ func (cb *Coinbase) ListenToPriceFeed(tickChan chan tick.Tick) {
 
 			tickData := tick.New(message.ProductID, message.Time.Time(), bid, ask)
 			if err := tickData.Validate(); err != nil {
-				log.WithError(err).Warnf("Invalid tick: %s", tickData.String())
+				slog.Warn(fmt.Sprintf("Invalid tick: %s", tickData.String()), "error", err)
 				continue
 			}
 

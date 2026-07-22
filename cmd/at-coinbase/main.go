@@ -2,7 +2,10 @@ package main
 
 import (
 	"context"
-	log "github.com/sirupsen/logrus"
+	"log/slog"
+	"os"
+	"time"
+
 	"github.com/sklinkert/at/internal/broker/coinbase"
 	"github.com/sklinkert/at/internal/paperwallet"
 	"github.com/sklinkert/at/internal/strategy/rsiadx"
@@ -11,24 +14,29 @@ import (
 	"github.com/sklinkert/at/pkg/tick"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
-	"time"
 )
 
 // Example setup for Coinbase broker
 
+func fatal(msg string, err error) {
+	slog.Error(msg, "error", err)
+	os.Exit(1)
+}
+
 func mustConnectDB() *gorm.DB {
 	db, err := gorm.Open(sqlite.Open("at-demo.db"), &gorm.Config{})
 	if err != nil {
-		log.WithError(err).Fatal("failed to connect database")
+		fatal("failed to connect database", err)
 	}
 	if err := db.AutoMigrate(&tick.Tick{}, &ohlc.OHLC{}, &trader.PerformanceRecord{}); err != nil {
-		log.WithError(err).Fatal("db.AutoMigrate() failed")
+		fatal("db.AutoMigrate() failed", err)
 	}
 	return db
 }
 
 func main() {
 	ctx := context.Background()
+	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, nil)))
 	instrument := "BTC-USD"
 	candleDuration := time.Minute * 1
 	strategyBackend := rsiadx.New(instrument, candleDuration)
@@ -44,7 +52,7 @@ func main() {
 		trader.WithFeedStoredCandles(strategyBackend),
 	)
 	if err := tr.Start(); err != nil {
-		log.WithError(err).Fatal("failed to start trader")
+		fatal("failed to start trader", err)
 	}
 	tr.Summary()
 }

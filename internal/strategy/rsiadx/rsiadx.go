@@ -1,7 +1,8 @@
 package rsiadx
 
 import (
-	log "github.com/sirupsen/logrus"
+	"log/slog"
+
 	"github.com/sklinkert/at/internal/broker"
 	"github.com/sklinkert/at/internal/strategy"
 	"github.com/sklinkert/at/pkg/eo"
@@ -14,7 +15,7 @@ import (
 )
 
 type RSIADX struct {
-	clog           *log.Entry
+	clog           *slog.Logger
 	instrument     string
 	rsi            *indicatorrsi.RSI
 	adx            *indicatoradx.ADX
@@ -35,7 +36,7 @@ const (
 )
 
 func New(instrument string, candleDuration time.Duration) *RSIADX {
-	clog := log.WithFields(log.Fields{"INSTRUMENT": instrument})
+	clog := slog.With("INSTRUMENT", instrument)
 
 	return &RSIADX{
 		clog:           clog,
@@ -70,14 +71,14 @@ func (d *RSIADX) OnWarmUpCandle(closedCandle *ohlc.OHLC) {
 
 	rsiValue, rsiErr := d.getRSI()
 	adxValue, adxErr := d.getADX()
-	log.WithFields(log.Fields{
-		"Start":   closedCandle.Start,
-		"Close":   closedCandle.Close,
-		"RSI":     rsiValue,
-		"RSI_ERR": rsiErr,
-		"ADX":     adxValue,
-		"ADX_ERR": adxErr,
-	}).Info("Processing warmup candle")
+	slog.Info("Processing warmup candle",
+		"Start", closedCandle.Start,
+		"Close", closedCandle.Close,
+		"RSI", rsiValue,
+		"RSI_ERR", rsiErr,
+		"ADX", adxValue,
+		"ADX_ERR", adxErr,
+	)
 }
 
 func (d *RSIADX) GetWarmUpCandleAmount() uint {
@@ -153,7 +154,7 @@ func (d *RSIADX) isStrongADXTrend() bool {
 func (d *RSIADX) getRSI() (rsiValue float64, err error) {
 	rsiValueMap, err := d.rsi.Value()
 	if err != nil {
-		log.WithError(err).Warn("Cannot get value from indicator")
+		slog.Warn("Cannot get value from indicator", "error", err)
 		return 0, err
 	}
 	rsiValue = rsiValueMap[indicatorrsi.Value]
@@ -163,7 +164,7 @@ func (d *RSIADX) getRSI() (rsiValue float64, err error) {
 func (d *RSIADX) getADX() (adxValue float64, err error) {
 	adxValueMap, err := d.adx.Value()
 	if err != nil {
-		log.WithError(err).Warn("Cannot get value from indicator")
+		slog.Warn("Cannot get value from indicator", "error", err)
 		return 0, err
 	}
 	adxValue = adxValueMap[indicatoradx.Value]
@@ -176,13 +177,13 @@ func (d *RSIADX) prepareOrder(closedCandle *ohlc.OHLC, direction broker.BuyDirec
 		stopLossPrice = helper.CalcStopLossPriceByPercentage(closedCandle.Close, helper.FloatToDecimal(stopLossInPercent), direction).Round(orderPricePrecision)
 	)
 
-	d.clog.WithFields(log.Fields{
-		"Direction": direction.String(),
-		"Time":      closedCandle.End,
-		"Close":     closedCandle.Close,
-		"Target":    targetInPercent,
-		"StopLoss":  stopLossPrice,
-	}).Debug("Prepare new order")
+	d.clog.Debug("Prepare new order",
+		"Direction", direction.String(),
+		"Time", closedCandle.End,
+		"Close", closedCandle.Close,
+		"Target", targetInPercent,
+		"StopLoss", stopLossPrice,
+	)
 
 	return broker.NewMarketOrder(direction, size, d.instrument, targetPrice, stopLossPrice)
 }

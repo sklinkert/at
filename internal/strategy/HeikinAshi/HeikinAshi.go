@@ -3,8 +3,9 @@ package heikinashi
 import (
 	"errors"
 	"fmt"
+	"log/slog"
+
 	"github.com/shopspring/decimal"
-	log "github.com/sirupsen/logrus"
 	"github.com/sklinkert/at/internal/broker"
 	"github.com/sklinkert/at/internal/strategy"
 	"github.com/sklinkert/at/pkg/indicator"
@@ -16,7 +17,7 @@ import (
 )
 
 type HeikinAshi struct {
-	clog                   *log.Entry
+	clog                   *slog.Logger
 	instrument             string
 	closedHACandles        []*ohlc.OHLC
 	ignoreInitialDirection bool
@@ -26,12 +27,11 @@ type HeikinAshi struct {
 	sma                    indicator.Indicator
 	candlesReceived        bool
 	openPositions          []broker.Position
-	openOrders             []broker.Order
 	currentTick            tick.Tick
 }
 
 func New(instrument string) *HeikinAshi {
-	clog := log.WithFields(log.Fields{"INSTRUMENT": instrument})
+	clog := slog.With("INSTRUMENT", instrument)
 
 	ha := &HeikinAshi{
 		clog:                   clog,
@@ -131,7 +131,7 @@ func (ha *HeikinAshi) OnCandle(closedCandles []*ohlc.OHLC) (toOpen, toClose []br
 	}
 
 	if err := ha.checkCandleAmount(*ha.currentDirection, 2); err != nil {
-		ha.clog.WithError(err).Info("checkCandleAmount() failed")
+		ha.clog.Info("checkCandleAmount() failed", "error", err)
 		return
 	}
 
@@ -200,16 +200,16 @@ func (ha *HeikinAshi) createOrder(haCandle *ohlc.OHLC, currentTick tick.Tick, vo
 		return broker.Order{}, fmt.Errorf("calcStopLossPrice() failed %v", err)
 	}
 
-	ha.clog.WithFields(log.Fields{
-		"Direction":       direction.String(),
-		"Time":            currentTick.Datetime,
-		"CurrentTick.Bid": currentTick.Bid,
-		"CurrentTick.Ask": currentTick.Ask,
-		"VolaTarget":      volaTarget,
-		"TargetPrice":     targetPrice,
-		"StopLossPrice":   stopLossPrice,
-		"OHLC.Age":        haCandle.Age(currentTick.Datetime).String(),
-	}).Debug("Creating new order")
+	ha.clog.Debug("Creating new order",
+		"Direction", direction.String(),
+		"Time", currentTick.Datetime,
+		"CurrentTick.Bid", currentTick.Bid,
+		"CurrentTick.Ask", currentTick.Ask,
+		"VolaTarget", volaTarget,
+		"TargetPrice", targetPrice,
+		"StopLossPrice", stopLossPrice,
+		"OHLC.Age", haCandle.Age(currentTick.Datetime).String(),
+	)
 
 	return broker.NewMarketOrder(direction, size, haCandle.Instrument, targetPrice, stopLossPrice), nil
 }

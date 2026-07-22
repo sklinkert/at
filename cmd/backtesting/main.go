@@ -2,9 +2,12 @@ package main
 
 import (
 	"context"
+	"log/slog"
+	"os"
+	"time"
+
 	"github.com/lfritz/env"
 	"github.com/shopspring/decimal"
-	log "github.com/sirupsen/logrus"
 	"github.com/sklinkert/at/internal/broker/backtest"
 	"github.com/sklinkert/at/internal/paperwallet"
 	"github.com/sklinkert/at/internal/strategy"
@@ -23,8 +26,12 @@ import (
 	"github.com/sklinkert/at/pkg/chart/amcharts"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
-	"time"
 )
+
+func fatal(msg string, err error) {
+	slog.Error(msg, "error", err)
+	os.Exit(1)
+}
 
 var conf struct {
 	importHistDataCSVFiles []string
@@ -58,6 +65,9 @@ func main() {
 	var graph chart.Chart
 	var ctx = context.Background()
 
+	lvl := new(slog.LevelVar)
+	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: lvl})))
+
 	var err error
 	var e = env.New()
 	e.Flag("DEBUG", &conf.debug, "Enable debug logging")
@@ -67,7 +77,7 @@ func main() {
 	e.OptionalString("PRICE_DB_FILE", &conf.priceDBFile, "/data/EURUSD/db", "SQLite DB file for price data (OHLCs)")
 	e.OptionalString("INSTRUMENT", &conf.instrument, "CS.D.EURUSD.MINI.IP", "instrument to trade")
 	e.OptionalString("BROKER", &conf.broker, BrokerBacktest, "Broker backend")
-	e.OptionalString("STRATEGY", &conf.strategyName, "meanreversion", "strategy to be executed")
+	e.OptionalString("STRATEGY", &conf.strategyName, strategy.NameRSI, "strategy to be executed")
 	e.OptionalString("CANDLE_DURATION", &conf.candleDuration, "60m", "Duration for OHLC candle")
 	e.OptionalInt("YEAR_FROM", &conf.yearFrom, 1970, "Backtesting beginning year")
 	e.OptionalInt("YEAR_TO", &conf.yearTo, 2022, "Backtesting end year")
@@ -75,19 +85,19 @@ func main() {
 	e.OptionalInt("MONTH_TO", &conf.monthTo, 12, "Backtesting end month")
 
 	if err := e.Load(); err != nil {
-		log.WithError(err).Fatal("env loading failed")
+		fatal("env loading failed", err)
 	}
 	if conf.debug {
-		log.SetLevel(log.DebugLevel)
+		lvl.Set(slog.LevelDebug)
 	}
 
 	db, err := gorm.Open(sqlite.Open("backtesting.db"), &gorm.Config{})
 	if err != nil {
-		log.WithError(err).Fatal("failed to open database file")
+		fatal("failed to open database file", err)
 	}
 	candleDuration, err := time.ParseDuration(conf.candleDuration)
 	if err != nil {
-		log.WithError(err).Fatal("cannot parse candle duration")
+		fatal("cannot parse candle duration", err)
 	}
 
 	var strategyBackend strategy.Strategy
@@ -113,10 +123,11 @@ func main() {
 	case strategy.NameRSIADX:
 		strategyBackend = rsiadx.New(conf.instrument, candleDuration)
 	default:
-		log.Fatalf("unsupported strategy %q", conf.strategyName)
+		slog.Error("unsupported strategy", "strategy", conf.strategyName)
+		os.Exit(1)
 	}
 
-	log.Info("Starting broker ", conf.broker)
+	slog.Info("Starting broker " + conf.broker)
 	var dataFeed backtest.Option
 	if len(conf.importHistDataCSVFiles) == 0 {
 		dataFeed = backtest.WithPriceDBFile(conf.priceDBFile, time.Minute)
@@ -158,19 +169,19 @@ func main() {
 		trader.WithPositionSubscription(graph),
 	)
 	if err := tr.Start(); err != nil {
-		log.WithError(err).Fatal("failed to start trader")
+		fatal("failed to start trader", err)
 	}
 
 	chartHTML, err := graph.RenderChartToHTML()
 	if err != nil {
-		log.WithError(err).Fatal("Unable to render chart as HTML")
+		fatal("Unable to render chart as HTML", err)
 	}
 	if err := tr.SavePerformanceRecord(chartHTML); err != nil {
-		log.WithError(err).Error("unable to store performance record")
+		slog.Error("unable to store performance record", "error", err)
 	}
 	tr.Summary()
 
 	if err := graph.Start(); err != nil {
-		log.WithError(err).Error("failed to start amcharts server")
+		slog.Error("failed to start amcharts server", "error", err)
 	}
 }

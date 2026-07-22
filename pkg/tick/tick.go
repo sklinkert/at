@@ -18,7 +18,7 @@ type Tick struct {
 	price      decimal.Decimal `gorm:"-"`
 }
 
-//var maxSpread = decimal.NewFromFloat(0.00025) // 2.5 pips
+// var maxSpread = decimal.NewFromFloat(0.00025) // 2.5 pips
 var dec2 = decimal.NewFromFloat(2)
 
 func New(instrument string, datetime time.Time, bid, ask decimal.Decimal) Tick {

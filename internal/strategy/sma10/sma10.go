@@ -2,14 +2,15 @@ package sma10
 
 import (
 	"fmt"
-	log "github.com/sirupsen/logrus"
+	"log/slog"
+	"time"
+
 	"github.com/sklinkert/at/internal/broker"
 	"github.com/sklinkert/at/internal/strategy"
 	"github.com/sklinkert/at/pkg/helper"
 	"github.com/sklinkert/at/pkg/indicator/sma"
 	"github.com/sklinkert/at/pkg/ohlc"
 	"github.com/sklinkert/at/pkg/tick"
-	"time"
 )
 
 // Long: Buy if candle closes below the last 7 candles and is above SMA 200
@@ -17,7 +18,7 @@ import (
 // Source: https://www.youtube.com/watch?v=_9Bmxylp63Y
 
 type SMA struct {
-	clog          *log.Entry
+	clog          *slog.Logger
 	instrument    string
 	sma           *sma.SMA
 	sma10         *sma.SMA
@@ -36,11 +37,11 @@ const (
 )
 
 func New(instrument string, candleDuration time.Duration) *SMA {
-	clog := log.WithFields(log.Fields{"INSTRUMENT": instrument, "CANDLE": candleDuration})
+	clog := slog.With("INSTRUMENT", instrument, "CANDLE", candleDuration)
 
 	locEST, err := time.LoadLocation("EST")
 	if err != nil {
-		clog.WithError(err).Fatal("time zone EST missing")
+		panic(fmt.Sprintf("time zone EST missing: %v", err))
 	}
 
 	return &SMA{
@@ -122,7 +123,7 @@ func (d *SMA) strategyLong(closedCandles []*ohlc.OHLC) (toOpen []broker.Order, t
 
 	smaValue, err := d.sma.Value()
 	if err != nil {
-		log.WithError(err).Warn("No SMA")
+		slog.Warn("No SMA", "error", err)
 		return
 	}
 	sma200Price := smaValue[sma.Value]
@@ -152,7 +153,7 @@ func (d *SMA) strategyLong(closedCandles []*ohlc.OHLC) (toOpen []broker.Order, t
 	}
 
 	if closePrice < sma200Price {
-		d.clog.Debugf("close is below SMA: %f < %f", closePrice, sma200Price)
+		d.clog.Debug(fmt.Sprintf("close is below SMA: %f < %f", closePrice, sma200Price))
 		return
 	}
 
@@ -160,7 +161,7 @@ func (d *SMA) strategyLong(closedCandles []*ohlc.OHLC) (toOpen []broker.Order, t
 		toOpenNew := d.prepareOrder(closedCandle, broker.BuyDirectionLong, 1.00)
 		return []broker.Order{toOpenNew}, []broker.Position{}
 	}
-	d.clog.Debugf("long: closePrice >= SMA10 : %f >= %f", closePrice, sma10Price)
+	d.clog.Debug(fmt.Sprintf("long: closePrice >= SMA10 : %f >= %f", closePrice, sma10Price))
 	return
 }
 
@@ -170,7 +171,7 @@ func (d *SMA) strategyShort(closedCandles []*ohlc.OHLC) (toOpen []broker.Order, 
 
 	smaValue, err := d.sma.Value()
 	if err != nil {
-		log.WithError(err).Warn("No SMA")
+		slog.Warn("No SMA", "error", err)
 		return
 	}
 	sma200Price := smaValue[sma.Value]
@@ -200,7 +201,7 @@ func (d *SMA) strategyShort(closedCandles []*ohlc.OHLC) (toOpen []broker.Order, 
 	}
 
 	if closePrice > sma200Price {
-		d.clog.Debugf("close is below SMA: %f < %f", closePrice, sma200Price)
+		d.clog.Debug(fmt.Sprintf("close is below SMA: %f < %f", closePrice, sma200Price))
 		return
 	}
 
@@ -208,7 +209,7 @@ func (d *SMA) strategyShort(closedCandles []*ohlc.OHLC) (toOpen []broker.Order, 
 		toOpenNew := d.prepareOrder(closedCandle, broker.BuyDirectionShort, 1.00)
 		return []broker.Order{toOpenNew}, []broker.Position{}
 	}
-	d.clog.Debugf("short: closePrice <= SMA10 : %f <= %f", closePrice, sma10Price)
+	d.clog.Debug(fmt.Sprintf("short: closePrice <= SMA10 : %f <= %f", closePrice, sma10Price))
 	return
 }
 
@@ -218,13 +219,13 @@ func (d *SMA) prepareOrder(closedCandle *ohlc.OHLC, direction broker.BuyDirectio
 		stopLossPrice = helper.CalcStopLossPriceByPercentage(closedCandle.Close, helper.FloatToDecimal(stopLossInPercent), direction)
 	)
 
-	d.clog.WithFields(log.Fields{
-		"Direction": direction.String(),
-		"Time":      closedCandle.End,
-		"Close":     closedCandle.Close,
-		"Target":    targetInPercent,
-		"StopLoss":  stopLossPrice,
-	}).Debug("Prepare new order")
+	d.clog.Debug("Prepare new order",
+		"Direction", direction.String(),
+		"Time", closedCandle.End,
+		"Close", closedCandle.Close,
+		"Target", targetInPercent,
+		"StopLoss", stopLossPrice,
+	)
 
 	return broker.NewMarketOrder(direction, size, d.instrument, targetPrice, stopLossPrice)
 }

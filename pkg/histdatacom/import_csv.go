@@ -2,12 +2,14 @@ package histdatacom
 
 import (
 	"encoding/csv"
-	"github.com/shopspring/decimal"
-	log "github.com/sirupsen/logrus"
-	"github.com/sklinkert/at/pkg/tick"
+	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"time"
+
+	"github.com/shopspring/decimal"
+	"github.com/sklinkert/at/pkg/tick"
 )
 
 func ImportFromCSV(instrument string, files []string, tickChan chan tick.Tick) {
@@ -18,18 +20,16 @@ func ImportFromCSV(instrument string, files []string, tickChan chan tick.Tick) {
 }
 
 func importFromCSV(instrument, file string, tickChan chan tick.Tick) {
-	clog := log.WithFields(log.Fields{
-		"FILE": file,
-	})
+	clog := slog.With("FILE", file)
 
 	clog.Info("Going to open tick data file")
 	csvFile, err := os.Open(file)
 	if err != nil {
-		clog.WithError(err).Fatal("unable to open CSV file")
+		panic(fmt.Sprintf("unable to open CSV file %q: %v", file, err))
 	}
 	defer func() {
 		if err := csvFile.Close(); err != nil {
-			clog.WithError(err).Warn("cannot close file handle")
+			clog.Warn("cannot close file handle", "error", err)
 		}
 	}()
 
@@ -37,7 +37,7 @@ func importFromCSV(instrument, file string, tickChan chan tick.Tick) {
 	// http://www.histdata.com/f-a-q/data-files-detailed-specification/
 	loc, err := time.LoadLocation("EST")
 	if err != nil {
-		clog.WithError(err).Fatal("cannot load timezone")
+		panic(fmt.Sprintf("cannot load timezone: %v", err))
 	}
 
 	// DateTime Stamp;Bar OPEN Bid Quote;Bar HIGH Bid Quote;Bar LOW Bid Quote;Bar CLOSE Bid Quote;Volume
@@ -49,28 +49,28 @@ func importFromCSV(instrument, file string, tickChan chan tick.Tick) {
 			break
 		}
 		if err != nil {
-			clog.WithError(err).Fatal("reading CSV file failed: ", file)
+			panic(fmt.Sprintf("reading CSV file failed: %s: %v", file, err))
 		}
 		if len(record) != 4 {
-			clog.Warn("Ignoring malformed line: ", record)
+			clog.Warn("Ignoring malformed line", "record", record)
 			continue
 		}
 
 		timeStr := record[0]
 		datetime, err := time.ParseInLocation("20060102 150405", timeStr[0:len(timeStr)-3], loc)
 		if err != nil {
-			clog.WithError(err).Warn("cannot parse time", timeStr)
+			clog.Warn("cannot parse time", "error", err, "time", timeStr)
 			continue
 		}
 
 		bid, err := decimal.NewFromString(record[1])
 		if err != nil {
-			clog.WithError(err).Warn("cannot parse bid", record[1])
+			clog.Warn("cannot parse bid", "error", err, "bid", record[1])
 			continue
 		}
 		ask, err := decimal.NewFromString(record[2])
 		if err != nil {
-			clog.WithError(err).Warn("cannot parse ask", record[2])
+			clog.Warn("cannot parse ask", "error", err, "ask", record[2])
 			continue
 		}
 

@@ -1,8 +1,9 @@
 package helper
 
 import (
+	"fmt"
+
 	"github.com/shopspring/decimal"
-	log "github.com/sirupsen/logrus"
 	"github.com/sklinkert/at/internal/broker"
 )
 
@@ -34,11 +35,8 @@ func CalcStopLossPriceByPercentage(price, percentage decimal.Decimal, orderDirec
 	case broker.BuyDirectionShort:
 		return price.Add(percentFrom).Round(6)
 	default:
-		log.Panicf("Unexpected order direction %q", orderDirection.String())
+		panic(fmt.Sprintf("Unexpected order direction %q", orderDirection.String()))
 	}
-
-	// Never reached
-	return decimal.Zero
 }
 
 func CalcTargetPriceByPercentage(price, percentage decimal.Decimal, orderDirection broker.BuyDirection) decimal.Decimal {
@@ -50,11 +48,8 @@ func CalcTargetPriceByPercentage(price, percentage decimal.Decimal, orderDirecti
 	case broker.BuyDirectionShort:
 		return price.Sub(percentFrom).Round(6)
 	default:
-		log.Panicf("Unexpected order direction %q", orderDirection.String())
+		panic(fmt.Sprintf("Unexpected order direction %q", orderDirection.String()))
 	}
-
-	// Never reached
-	return decimal.Zero
 }
 
 func SlippageAbsolute(expectedPrice, realPrice decimal.Decimal) decimal.Decimal {

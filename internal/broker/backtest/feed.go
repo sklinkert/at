@@ -2,16 +2,18 @@ package backtest
 
 import (
 	"context"
+	"fmt"
+	"log/slog"
+	"time"
+
 	"github.com/piquette/finance-go/chart"
 	"github.com/piquette/finance-go/datetime"
 	"github.com/shopspring/decimal"
-	log "github.com/sirupsen/logrus"
 	"github.com/sklinkert/at/pkg/ohlc"
 	"github.com/sklinkert/at/pkg/tick"
 	"github.com/sklinkert/igmarkets"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
-	"time"
 )
 
 type QuotesSource int
@@ -29,14 +31,14 @@ func (b *Backtest) retrieveCandlesFromIGMarkets(receiver chan ohlc.OHLC) {
 	var ctx = context.Background()
 
 	if err := b.brokerIGMarkets.Login(ctx); err != nil {
-		log.WithError(err).Fatal("login failed")
+		panic(fmt.Sprintf("login failed: %v", err))
 	}
 
 	priceResponse, err := b.brokerIGMarkets.GetPriceHistory(ctx, b.instrument, igmarkets.ResolutionHour, 100, b.periodFrom, b.periodTo)
 	if err != nil {
-		log.WithError(err).Fatalf("failed to fetch price history for %q from IG Markets", b.instrument)
+		panic(fmt.Sprintf("failed to fetch price history for %q from IG Markets: %v", b.instrument, err))
 	}
-	log.Infof("prices fetched: %d", len(priceResponse.Prices))
+	slog.Info(fmt.Sprintf("prices fetched: %d", len(priceResponse.Prices)))
 
 	for _, price := range priceResponse.Prices {
 		open := bidAskToTick(b.instrument, price.SnapshotTimeUTCParsed, price.OpenPrice.Bid, price.OpenPrice.Ask)
@@ -54,7 +56,7 @@ func (b *Backtest) retrieveCandlesFromIGMarkets(receiver chan ohlc.OHLC) {
 			End:        price.SnapshotTimeUTCParsed.Add(b.priceDBCandleDuration),
 		}
 		candle.ForceClose()
-		log.Infof("Candle: %+v", candle)
+		slog.Info(fmt.Sprintf("Candle: %+v", candle))
 		receiver <- candle
 	}
 }
@@ -73,8 +75,8 @@ func (b *Backtest) retrieveCandlesFromYahooFinance(receiver chan ohlc.OHLC) {
 		End:      datetime.New(&b.periodTo),
 	}
 
-	log.Infof("Fetching quotes from Yahoo Finance for %q with period %s - %s",
-		b.instrument, b.periodFrom, b.periodTo)
+	slog.Info(fmt.Sprintf("Fetching quotes from Yahoo Finance for %q with period %s - %s",
+		b.instrument, b.periodFrom, b.periodTo))
 	iter := chart.Get(params)
 
 	for iter.Next() {
@@ -91,12 +93,12 @@ func (b *Backtest) retrieveCandlesFromYahooFinance(receiver chan ohlc.OHLC) {
 			End:        openTime.Add(b.priceDBCandleDuration),
 		}
 		candle.ForceClose()
-		log.Infof("Candle: %+v", candle)
+		slog.Info(fmt.Sprintf("Candle: %+v", candle))
 
 		receiver <- candle
 	}
 	if err := iter.Err(); err != nil {
-		log.WithError(err).Fatal("getting quotes from yahoo failed")
+		panic(fmt.Sprintf("getting quotes from yahoo failed: %v", err))
 	}
 }
 
@@ -105,7 +107,7 @@ func (b *Backtest) retrieveCandlesFromSQLite(receiver chan ohlc.OHLC) {
 
 	db, err := gorm.Open(sqlite.Open(b.priceDBFile), &gorm.Config{})
 	if err != nil {
-		log.WithError(err).Fatalf("failed to connect database %q", b.priceDBFile)
+		panic(fmt.Sprintf("failed to connect database %q: %v", b.priceDBFile, err))
 	}
 
 	// Speed up read performance
@@ -121,11 +123,11 @@ func (b *Backtest) retrieveCandlesFromSQLite(receiver chan ohlc.OHLC) {
 			Order("start").
 			Where("duration = ? AND start BETWEEN ? AND ?", b.priceDBCandleDuration, b.periodFrom, b.periodTo).
 			Find(&candles).Error; err != nil {
-			log.WithError(err).Error("db.Find(&candles) failed")
+			slog.Error("db.Find(&candles) failed", "error", err)
 			return
 		}
 		if len(candles) == 0 {
-			log.Info("No more candles fetched")
+			slog.Info("No more candles fetched")
 			return
 		}
 		for _, candle := range candles {
@@ -148,7 +150,7 @@ func (b *Backtest) ListenToPriceFeed(traderChan chan tick.Tick) {
 	case QuotesSourceCoinbase:
 		go b.retrieveCandlesFromCoinbase(c)
 	default:
-		log.Fatalf("Unknown quotes source: %d", b.quotesSource)
+		panic(fmt.Sprintf("Unknown quotes source: %d", b.quotesSource))
 	}
 
 	for candle := range c {

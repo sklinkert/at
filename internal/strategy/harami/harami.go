@@ -2,7 +2,8 @@ package harami
 
 import (
 	"fmt"
-	log "github.com/sirupsen/logrus"
+	"log/slog"
+
 	"github.com/sklinkert/at/internal/broker"
 	"github.com/sklinkert/at/internal/strategy"
 	"github.com/sklinkert/at/pkg/helper"
@@ -17,14 +18,13 @@ import (
 // Source: https://www.youtube.com/watch?v=_9Bmxylp63Y
 
 type Harami struct {
-	clog          *log.Entry
+	clog          *slog.Logger
 	instrument    string
 	sma           *sma.SMA
 	previousLows  *circularbuffer.CircularBuffer
 	previousHighs *circularbuffer.CircularBuffer
 	ohlcPeriod    time.Duration
 	openPositions []broker.Position
-	openOrders    []broker.Order
 }
 
 const (
@@ -34,7 +34,7 @@ const (
 )
 
 func New(instrument string, candleDuration time.Duration) *Harami {
-	clog := log.WithFields(log.Fields{"INSTRUMENT": instrument, "CANDLE": candleDuration})
+	clog := slog.With("INSTRUMENT", instrument, "CANDLE", candleDuration)
 
 	return &Harami{
 		clog:          clog,
@@ -99,7 +99,7 @@ func (h *Harami) OnCandle(closedCandles []*ohlc.OHLC) (toOpen, toClose []broker.
 
 	smaValue, err := h.sma.Value()
 	if err != nil {
-		log.WithError(err).Warn("No SMA")
+		slog.Warn("No SMA", "error", err)
 		return
 	}
 	smaPrice := smaValue[sma.Value]
@@ -128,7 +128,7 @@ func (h *Harami) OnCandle(closedCandles []*ohlc.OHLC) (toOpen, toClose []broker.
 		return []broker.Order{toOpenNew}, []broker.Order{}, []broker.Position{}
 	}
 
-	h.clog.Debugf("No harami long candle found: %s", closedCandle)
+	h.clog.Debug(fmt.Sprintf("No harami long candle found: %s", closedCandle))
 	return
 }
 
@@ -138,13 +138,13 @@ func (h *Harami) prepareOrder(closedCandle *ohlc.OHLC, direction broker.BuyDirec
 		stopLossPrice = helper.CalcStopLossPriceByPercentage(closedCandle.Close, helper.FloatToDecimal(stopLossInPercent), direction)
 	)
 
-	h.clog.WithFields(log.Fields{
-		"Direction": direction.String(),
-		"Time":      closedCandle.End,
-		"Close":     closedCandle.Close,
-		"Target":    targetInPercent,
-		"StopLoss":  stopLossPrice,
-	}).Debug("Prepare new order")
+	h.clog.Debug("Prepare new order",
+		"Direction", direction.String(),
+		"Time", closedCandle.End,
+		"Close", closedCandle.Close,
+		"Target", targetInPercent,
+		"StopLoss", stopLossPrice,
+	)
 
 	return broker.NewMarketOrder(direction, size, h.instrument, targetPrice, stopLossPrice)
 }

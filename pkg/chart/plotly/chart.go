@@ -4,11 +4,11 @@ import (
 	"bytes"
 	"embed"
 	"fmt"
-	log "github.com/sirupsen/logrus"
 	"github.com/sklinkert/at/internal/broker"
 	"github.com/sklinkert/at/pkg/ohlc"
 	"html/template"
 	"io"
+	"log/slog"
 	"net/http"
 )
 
@@ -78,7 +78,7 @@ func (c *Chart) Start() error {
 	http.HandleFunc("/chart", func(w http.ResponseWriter, req *http.Request) {
 		w.Header().Add("Content-Type", "text/html")
 		if err := c.RenderChart(w); err != nil {
-			log.WithError(err).Error("RenderChart() failed")
+			slog.Error("RenderChart() failed", "error", err)
 		}
 	})
 	fmt.Printf("Chart available at http://localhost:%d/chart\n", c.port)

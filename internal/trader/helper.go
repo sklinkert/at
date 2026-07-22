@@ -2,10 +2,11 @@ package trader
 
 import (
 	"fmt"
-	"github.com/shopspring/decimal"
-	log "github.com/sirupsen/logrus"
-	"github.com/sklinkert/at/pkg/helper"
+	"log/slog"
 	"sort"
+
+	"github.com/shopspring/decimal"
+	"github.com/sklinkert/at/pkg/helper"
 )
 
 // getTotalPerformanceInPips return total performance of closed positions
@@ -66,6 +67,6 @@ func (tr *Trader) printPositionPerformanceByNotes() {
 	sort.Strings(sortedKeys)
 	for _, note := range sortedKeys {
 		totalProfit := perfPositionsByNote[note]
-		log.Infof("%25s: %s %.2f pips", "Total profit for positions with note", note, totalProfit)
+		slog.Info(fmt.Sprintf("%25s: %s %.2f pips", "Total profit for positions with note", note, totalProfit))
 	}
 }

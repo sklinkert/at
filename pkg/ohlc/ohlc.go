@@ -3,12 +3,12 @@ package ohlc
 import (
 	"errors"
 	"fmt"
+	"time"
+
 	"github.com/jinzhu/copier"
 	"github.com/shopspring/decimal"
-	log "github.com/sirupsen/logrus"
 	"github.com/sklinkert/at/pkg/tick"
 	"gorm.io/gorm"
-	"time"
 )
 
 const maxGapBetweenTicksInSeconds = 60
@@ -140,35 +140,35 @@ func (o *OHLC) Validate() error {
 
 func (o *OHLC) PerformanceFromOpenToHighAbsolute() decimal.Decimal {
 	if o.Open.IsZero() {
-		log.Panicf("ohlc.Open is zero: %+v", o)
+		panic(fmt.Sprintf("ohlc.Open is zero: %+v", o))
 	}
 	return o.High.Sub(o.Open).Div(o.Open).Mul(decimal.NewFromFloat(100)).Round(4)
 }
 
 func (o *OHLC) PerformanceFromOpenToLowAbsolute() decimal.Decimal {
 	if o.Open.IsZero() {
-		log.Panicf("ohlc.Open is zero: %+v", o)
+		panic(fmt.Sprintf("ohlc.Open is zero: %+v", o))
 	}
 	return o.Low.Sub(o.Open).Div(o.Open).Mul(decimal.NewFromFloat(100)).Round(4)
 }
 
 func (o *OHLC) ReversionPerformanceFromHighAbsolute() decimal.Decimal {
 	if o.High.IsZero() {
-		log.Panicf("ohlc.High is zero: %+v", o)
+		panic(fmt.Sprintf("ohlc.High is zero: %+v", o))
 	}
 	return o.Close.Sub(o.High).Div(o.High).Mul(decimal.NewFromFloat(100)).Round(4)
 }
 
 func (o *OHLC) PerformanceInPercentage() decimal.Decimal {
 	if o.Open.IsZero() {
-		log.Panicf("ohlc.Open is zero: %+v", o)
+		panic(fmt.Sprintf("ohlc.Open is zero: %+v", o))
 	}
 	return o.Close.Sub(o.Open).Div(o.Open).Mul(decimal.NewFromFloat(100)).Round(4)
 }
 
 func (o *OHLC) VolatilityInPercentage() decimal.Decimal {
 	if o.Open.IsZero() {
-		log.Panicf("ohlc.Open is zero: %+v", o)
+		panic(fmt.Sprintf("ohlc.Open is zero: %+v", o))
 	}
 	return o.High.Sub(o.Low).Div(o.Open).Mul(decimal.NewFromFloat(100)).Round(4)
 }
@@ -232,7 +232,7 @@ func smoothCandleStart(ts time.Time, period time.Duration) time.Time {
 func ToHeikinAshi(previous, now *OHLC) *OHLC {
 	var ha OHLC
 	if err := copier.Copy(&ha, now); err != nil {
-		log.WithError(err).Fatal("copier.Copy failed")
+		panic(fmt.Sprintf("copier.Copy failed: %v", err))
 	}
 	ha.Open = decimal.Avg(previous.Open, previous.Close)
 	ha.Close = decimal.Avg(now.Open, now.Close, now.High, now.Low)
